@@ -1,0 +1,134 @@
+/*
+ * WORD SEARCH STYLE SHEET
+ * (c) 2002 by Erick Levy!
+ */
+
+ /* Material icons */
+ @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+
+ /* Google Fonts */
+ @import url('https://fonts.googleapis.com/css2?family=Varela+Round&display=swap');
+
+:root {
+    --header-color: white;
+    --header-bg-color: black;
+
+    --normal-color: black;
+    --normal-bg-color: #ccc;
+
+    --board-color: black;
+    --board-bg-color: white;
+
+    --highlight-color: #369;
+    --grayed-color: #666;
+
+    --board-width: 512px;
+    --board-height: 512px;
+
+    --board-cols: 18;
+    --board-rows: 18;
+
+    --tile-width: calc(var(--board-width) / var(--board-cols));
+    --tile-height: calc(var(--board-height) / var(--board-rows));
+}
+
+:root .darkmode {
+    --normal-color: white;
+    --normal-bg-color: #111;
+    --board-color: white;
+    --board-bg-color: #333;
+    --grayed-color: #999;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Varela Round', Arial, Helvetica, sans-serif;
+}
+
+body {
+    color: var(--normal-color);
+    background-color: var(--normal-bg-color);
+    display: flex;
+    height: 100vh;
+    min-width: var(--board-width);
+    flex-direction: column;
+    justify-content: start;
+    align-items: center;
+}
+
+header {
+    max-width: var(--board-width);
+    min-height: 38px;
+    color: var(--header-color);
+    background-color: var(--header-bg-color);
+}
+
+main {
+    margin: 16px 0;
+}
+
+footer {
+    width: var(--board-width);
+    color: var(--grayed-color);
+    text-align: center;
+    padding: 16px;
+}
+
+#navbar-cont {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    align-items: center;
+    width: var(--board-width);
+}
+#navbar-cont h1 {
+    order: 2;
+}
+#navbar-cont nav.left {
+    order: 1;
+}
+#navbar-cont nav.right {
+    order: 3;
+}
+#navbar-cont button {
+    border: none;
+    color: var(--header-color);
+    background-color: var(--header-bg-color);
+}
+
+/* WORD SEARCH GAME STYLES */
+
+#letter-board {
+    color: var(--board-color);
+    /* background-color: var(--board-bg-color); */
+    /* border: 1px solid var(--board-color); */
+    width: var(--board-width);
+    height: var(--board-width);
+}
+
+.letter-tile {
+    display: inline-block;
+    width: var(--tile-width);
+    height: var(--tile-height);
+    text-align: center;
+    align-content: center;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+
+#word-list {
+    max-width: var(--board-width);
+    columns: 2;
+    text-transform: uppercase;
+    padding: 16px;
+}
+#word-list li {
+    list-style: none;
+}
+#word-list li.found {
+    list-style: none;
+    text-decoration: line-through;
+}
