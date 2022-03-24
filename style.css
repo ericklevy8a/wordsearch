@@ -28,8 +28,8 @@
     --board-cols: 18;
     --board-rows: 18;
 
-    --tile-width: calc(var(--board-width) / var(--board-cols));
-    --tile-height: calc(var(--board-height) / var(--board-rows));
+    --tile-width: 24px;
+    --tile-height: 24px;
 }
 
 :root .darkmode {
@@ -56,6 +56,7 @@ body {
     flex-direction: column;
     justify-content: start;
     align-items: center;
+    user-select: none;
 }
 
 header {
@@ -100,35 +101,102 @@ footer {
 }
 
 /* WORD SEARCH GAME STYLES */
-
-#letter-board {
+.game-board {
     color: var(--board-color);
-    /* background-color: var(--board-bg-color); */
-    /* border: 1px solid var(--board-color); */
+    background-color: var(--board-bg-color);
+    box-sizing: border-box;
     width: var(--board-width);
     height: var(--board-width);
+    border: 1px solid var(--board-color);
+    border-radius: 16px;
+    padding: 16px;
+}
+
+#board-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+#tile-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    color: var(--board-color);
+    background-color: none;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
 }
 
 .letter-tile {
     display: inline-block;
-    width: var(--tile-width);
-    height: var(--tile-height);
+    width: calc(100% / var(--board-cols));
+    height: calc(100% / var(--board-rows));
+    line-height: 30px;
+    font-size: 1.25em;
+    top: 0;
+    white-space: nowrap;
     text-align: center;
-    align-content: center;
     text-transform: uppercase;
+    font-size: 90%;
     font-weight: bold;
+    z-index: 1;
 }
 
-#word-list {
+/* word-search */
+#word-search-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 3;
+    color: var(--grayed-color);
+    cursor: pointer;
+}
+#word-found-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 4;
+    pointer-events: none;
+}
+
+.outliner {
+    display: block;
+    position: absolute;
+    border: 1px solid black;
+    border-radius: 24px;
+    pointer-events: none;
+}
+#outliner-search {
+    background-color: var(--highlight-color);
+    opacity: 0.25;
+}
+.outliner.hidden {
+    display: none;
+}
+.outliner.highlight {
+    border: none;
+    background-color: var(--grayed-color);
+    opacity: 0.25;
+}
+
+/* word-list */
+
+#list-container {
     max-width: var(--board-width);
     columns: 2;
     text-transform: uppercase;
     padding: 16px;
 }
-#word-list li {
+#list-container li {
     list-style: none;
 }
-#word-list li.found {
+#list-container li.found {
     list-style: none;
     text-decoration: line-through;
 }

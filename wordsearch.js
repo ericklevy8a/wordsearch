@@ -198,7 +198,7 @@ function putWordDiagonalDown(word, row, col) {
  * Generates DOM elements to display the virtual board
  */
 function displayBoard() {
-    let board = document.getElementById('letter-board');
+    let board = document.getElementById('board-container');
     board.innerHTML = '';
     for (let i = 0; i < BOARD_ROWS; i++) {
         for (let j = 0; j < BOARD_COLS; j++) {
@@ -214,7 +214,7 @@ function displayBoard() {
  * Generates DOM elements to display the list of words
  */
 function displayWordList(list) {
-    let wordList = document.getElementById('word-list');
+    let wordList = document.getElementById('list-container');
     wordList.innerHTML = '';
     list.forEach(item => {
         let li = document.createElement('li');
@@ -261,7 +261,167 @@ function initGame() {
     // Filter only in board words and sort by index to restore the original list order
     map = map.filter(item => item.inBoard).sort((a, b) => a.index - b.index);
     displayWordList(map);
+    // Add an outliner layer for word search and a found word layer
+    let gameBoard = document.getElementById('board-container');
+    let wordSearchLayer = document.createElement('div');
+    wordSearchLayer.id = 'word-search-layer';
+    let wordFoundLayer = document.createElement('div');
+    wordFoundLayer.id = 'word-found-layer';
+    // Create the outliner element
+    let outliner = document.createElement('div');
+    outliner.id = 'outliner-search';
+    outliner.classList.add('outliner', 'hidden');
+    wordSearchLayer.appendChild(outliner);
+    gameBoard.appendChild(wordSearchLayer);
+    gameBoard.appendChild(wordFoundLayer);
+    gameBoard.addEventListener('mousedown', mouseDownListener);
+    gameBoard.addEventListener('mousemove', mouseMoveListener);
+    gameBoard.addEventListener('mouseup', mouseUpListener);
+}
+
+// WORD SEARCHING EVENTS AND OUTLINERS
+
+var gOutlineMovingFlag = false;
+var gOutlineStartPosition = { row: 0, col: 0 };
+var gCellWidth = 0;
+var gCellHeight = 0;
+
+function mouseDownListener(e) {
+    // Calculate and store the outline start position
+    gCellWidth = (e.target.offsetWidth / BOARD_COLS);
+    gCellHeight = (e.target.offsetHeight / BOARD_ROWS);
+    gOutlineStartPosition.col = Math.floor(e.offsetX / gCellWidth);
+    gOutlineStartPosition.row = Math.floor(e.offsetY / gCellHeight);
+    // Prepare the outline element
+    let outliner = document.getElementById('outliner-search');
+    let x = gOutlineStartPosition.col * gCellWidth;
+    let y = gOutlineStartPosition.row * gCellHeight;
+    outliner.style.left = `${x}px`;
+    outliner.style.top = `${y}px`;
+    outliner.style.width = `${gCellWidth}px`;
+    outliner.style.height = `${gCellHeight}px`;
+    // Set the moving flag for display the outline element
+    gOutlineMovingFlag = true;
+}
+
+function mouseMoveListener(e) {
+    // Check moving flag
+    if (gOutlineMovingFlag) {
+        const outliner = document.getElementById('outliner-search');
+        let sRow = gOutlineStartPosition.row;
+        let sCol = gOutlineStartPosition.col;
+        // Calculate actual position
+        let aRow = Math.floor(e.offsetY / gCellHeight);
+        let aCol = Math.floor(e.offsetX / gCellWidth);
+        // Validate if still in the start position
+        if (aCol === sCol && aRow === sRow) {
+            outliner.classList.add('hidden');
+            return;
+        }
+        outliner.classList.remove('hidden');
+        let deltaRows = aRow - sRow;
+        let deltaCols = aCol - sCol;
+        let deg = 0;
+        // Check for directional conditions
+        if (Math.abs(deltaCols) > 2 * Math.abs(deltaRows)) {
+            aRow = sRow; // horizontal
+        } else if (Math.abs(deltaRows) > 2 * Math.abs(deltaCols)) {
+            aCol = sCol; // Vertical
+        } else {
+            if (aRow > sRow && aCol > sCol) {
+                deg = 45; // diagonal down normal
+            } else if (aRow < sRow && aCol < sCol) {
+                deg = -135; // diagonal down reverse
+            } else if (aRow > sRow && aCol < sCol) {
+                deg = 135; // diagonal up reverse
+            } else if (aRow < sRow && aCol > sCol) {
+                deg = -45; // diagonal up normal
+            }
+            aRow = sRow;
+            // Calculate the hypothenusa of delta for diagonal widths
+            aCol = sCol + Math.sqrt(2 * deltaCols * deltaCols);
+        }
+        // Prepare the outline element
+        let x = Math.floor(Math.min(sCol, aCol) * gCellWidth);
+        let y = Math.floor(Math.min(sRow, aRow) * gCellHeight);
+        let w = Math.floor((Math.abs(aCol - sCol) + 1) * gCellWidth);
+        let h = Math.floor((Math.abs(aRow - sRow) + 1) * gCellHeight);
+        outliner.style.left = `${x}px`;
+        outliner.style.top = `${y}px`;
+        outliner.style.transformOrigin = `${gCellWidth / 2}px ${gCellHeight / 2}px`;
+        outliner.style.transform = `rotate(${deg}deg)`;
+        outliner.style.width = `${w}px`;
+        outliner.style.height = `${h}px`;
+        // Check the word under the outline
+        // Stylize the outline to show word found
+    }
+}
+
+function mouseUpListener(e) {
+    // DOM elements
+    const outliner = document.getElementById('outliner-search');
+    // Update the outline position, angle and size
+    let sRow = gOutlineStartPosition.row;
+    let sCol = gOutlineStartPosition.col;
+    let eRow = Math.floor(e.offsetY / gCellHeight);
+    let eCol = Math.floor(e.offsetX / gCellWidth);
+    // Hide the outline element and reset moving flag
+    outliner.classList.add('hidden');
+    gOutlineMovingFlag = false;
+    // Restore the word under the outliner
+    let word = restoreWordUnderOutliner(eRow, eCol);
+    // Check found word in list
+    if (findWordInList(word) !== undefined) {
+        // Copy the outline element to found words layer
+        const wordFoundLayer = document.getElementById('word-found-layer');
+        const outlinerClone = outliner.cloneNode();
+        // Change color of found outliner
+        outlinerClone.classList.add('highlight');
+        outlinerClone.classList.remove('hidden');
+        outlinerClone.id = 'ouliner-found-' + word;
+        wordFoundLayer.appendChild(outlinerClone);
+        // Cross the found word in the list
+        markWordAsFound(word)
+        // Verify game over condition
+        if (wordsRemain() === 0) {
+            // @TODO: GAME OVER !!!
+        }
+    }
+}
+
+function restoreWordUnderOutliner(eRow, eCol) {
+    let sRow = gOutlineStartPosition.row;
+    let sCol = gOutlineStartPosition.col;
+    let word = '';
+    do {
+        word += gBoard[sRow][sCol];
+        if (sCol === eCol && sRow === eRow) break;
+        sRow += Math.sign(eRow - sRow);
+        sCol += Math.sign(eCol - sCol);
+    } while (true);
+    return word;
+}
+
+function findWordInList(word) {
+    const list = [...document.querySelectorAll('#list-container li:not(.found)')];
+    return list.find(element => element.innerHTML === word);
+}
+
+function markWordAsFound(word) {
+    const element = findWordInList(word);
+    if (element) {
+        element.classList.add('found');
+        return true;
+    }
+    return false;
+}
+
+function wordsRemain() {
+    const list = [...document.querySelectorAll('#list-container li')];
+    const found = [...document.querySelectorAll('#list-container li.found')]
+    return list.length - found.length;
 }
 
 initGame();
-console.log(gTries);
+
+// End of code.
