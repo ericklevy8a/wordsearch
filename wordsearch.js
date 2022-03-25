@@ -5,8 +5,8 @@
  * or Sopa de Letras from the spaniard Pedro Ocón de Oro,
  */
 
-const BOARD_ROWS = 18;
-const BOARD_COLS = 18;
+const BOARD_ROWS = 16;
+const BOARD_COLS = 16;
 
 const VALID_CHARS = 'abcdefghijklmnñopqrstuvwxyz';
 const INIT_CHAR = '.';
@@ -16,32 +16,8 @@ const DIR_VERTICAL = 'v';
 const DIR_DIAGONAL_UP = 'u';
 const DIR_DIAGONAL_DOWN = 'd';
 
-// Provisional set of words, @TODO: get random list from a file/collection/url/etc
-var gWords = [
-    'espacio',
-    'dedicado',
-    'desplegar',
-    'posteriormente',
-    'lista',
-    'original',
-    'palabras',
-    'seleccionadas',
-    'encontrar',
-    'subrayar',
-
-    'preferentemente',
-    'filtrara',
-    'existentes',
-    'tablero',
-    'distribuidas',
-    'ordenadas',
-    'primera',
-    'segunda',
-    'columnas',
-    'ericklevy'
-];
-
-var gTries = 0;
+// Virtual list of words
+var gWords = [];
 
 // Virtual game board
 var gBoard = null;
@@ -78,9 +54,6 @@ function fillBoard() {
  */
 function forceWord(word, times = BOARD_ROWS * BOARD_COLS) {
     while (times > 0) {
-
-        gTries++; // @TODO: DELETE
-
         if (tryWord(word))
             return true;
         times -= 1;
@@ -122,10 +95,10 @@ function putWord(word, row, col, dir, reverse = false) {
     // Check reverse mode
     if (reverse) word = reverseString(word);
     switch (dir) {
-        case 'h': retval = putWordHorizontal(word, row, col); break;
-        case 'v': retval = putWordVertical(word, row, col); break;
-        case 'u': retval = putWordDiagonalUp(word, row, col); break;
-        case 'd': retval = putWordDiagonalDown(word, row, col); break;
+        case DIR_HORIZONTAL: retval = putWordHorizontal(word, row, col); break;
+        case DIR_VERTICAL: retval = putWordVertical(word, row, col); break;
+        case DIR_DIAGONAL_UP: retval = putWordDiagonalUp(word, row, col); break;
+        case DIR_DIAGONAL_DOWN: retval = putWordDiagonalDown(word, row, col); break;
     }
     return retval;
 }
@@ -219,6 +192,7 @@ function displayWordList(list) {
     list.forEach(item => {
         let li = document.createElement('li');
         li.innerText = item.word;
+        li.dataset.clean = item.clean;
         wordList.appendChild(li);
     });
 }
@@ -245,71 +219,134 @@ function reverseString(str) {
 
 // INITIALIZE GAME
 
-function initGame() {
+/**
+ * Integrates all the initilization for a new word search game
+ */
+async function initGame() {
+    // Select a set of words
+    gWords = await getRandomWordSet();
+    // Create game board
     initBoard();
     // Initialize a map of the word list
     let map = gWords.map((word, index) => {
-        return { index: index, word: word, inBoard: false }
+        return {
+            index: index,
+            word: word,
+            clean: cleanWord(word),
+            inBoard: false
+        }
     });
     // Sort items by word length descending for efficiency
-    map.sort((a, b) => b.word.length - a.word.length);
+    map.sort((a, b) => b.clean.length - a.clean.length);
     // Force the words into the board and store its in board state
-    map.forEach(item => item.inBoard = forceWord(item.word));
+    map.forEach(item => item.inBoard = forceWord(item.clean));
     // Complete the board and display
     fillBoard();
     displayBoard();
     // Filter only in board words and sort by index to restore the original list order
     map = map.filter(item => item.inBoard).sort((a, b) => a.index - b.index);
     displayWordList(map);
-    // Add an outliner layer for word search and a found word layer
-    let gameBoard = document.getElementById('board-container');
-    let wordSearchLayer = document.createElement('div');
+    // Creates DOM elements for a word search outliner and its layer and a words found layer
+    const gameBoard = document.getElementById('board-container');
+    const wordSearchLayer = document.createElement('div');
     wordSearchLayer.id = 'word-search-layer';
-    let wordFoundLayer = document.createElement('div');
+    const wordFoundLayer = document.createElement('div');
     wordFoundLayer.id = 'word-found-layer';
-    // Create the outliner element
-    let outliner = document.createElement('div');
+    const outliner = document.createElement('div');
     outliner.id = 'outliner-search';
     outliner.classList.add('outliner', 'hidden');
     wordSearchLayer.appendChild(outliner);
     gameBoard.appendChild(wordSearchLayer);
     gameBoard.appendChild(wordFoundLayer);
+    // Add mouse event listeners
     gameBoard.addEventListener('mousedown', mouseDownListener);
     gameBoard.addEventListener('mousemove', mouseMoveListener);
     gameBoard.addEventListener('mouseup', mouseUpListener);
+    gameBoard.addEventListener('mouseout', mouseOutListener);
+}
+
+/**
+ * Fetchs a JSON file with a collection of sets of 20 words each and randomly pick one
+ * @returns A randomly picked 20 words set (or a default one).
+ */
+async function getRandomWordSet() {
+    const jsonWordSets = await fetch('./words.json')
+        .then(response => { return response.json(); });
+    return jsonWordSets[Math.floor(Math.random() * jsonWordSets.length)] || [
+        'this is a',
+        'default',
+        'list of',
+        'words',
+        'and its presence',
+        'means',
+        'there was',
+        'an error',
+        'configuration',
+        'existence',
+        'collection',
+        'json file',
+        'should be',
+        'verified',
+        'even so',
+        'you can play',
+        'with the',
+        'phrases',
+        'of this',
+        'message'
+    ];
+}
+
+/**
+ * Clean a word string replacing some ilegal chars for the game.
+ * @param {string} word A word to apply the cleaning procedure.
+ * @returns The cleaned word.
+ */
+function cleanWord(word) {
+    return word
+        .replaceAll(' ', '')
+        .replace(/[áâàä]/g, 'a')
+        .replace(/[éêèë]/g, 'e')
+        .replace(/[íîìï]/g, 'i')
+        .replace(/[óôòö]/g, 'o')
+        .replace(/[úûùü]/g, 'u')
+        .replace(/[úûùü]/g, 'u');
 }
 
 // WORD SEARCHING EVENTS AND OUTLINERS
 
-var gOutlineMovingFlag = false;
-var gOutlineStartPosition = { row: 0, col: 0 };
 var gCellWidth = 0;
 var gCellHeight = 0;
 
+var gOutlinerFactor = 0.75;
+
+var gOutlinerMovingFlag = false;
+var gOutlinerStartPosition = { row: 0, col: 0 };
+
+/**
+ * Listener for the mousedown event.
+ * @param {*} e Event object.
+ */
 function mouseDownListener(e) {
     // Calculate and store the outline start position
     gCellWidth = (e.target.offsetWidth / BOARD_COLS);
     gCellHeight = (e.target.offsetHeight / BOARD_ROWS);
-    gOutlineStartPosition.col = Math.floor(e.offsetX / gCellWidth);
-    gOutlineStartPosition.row = Math.floor(e.offsetY / gCellHeight);
-    // Prepare the outline element
-    let outliner = document.getElementById('outliner-search');
-    let x = gOutlineStartPosition.col * gCellWidth;
-    let y = gOutlineStartPosition.row * gCellHeight;
-    outliner.style.left = `${x}px`;
-    outliner.style.top = `${y}px`;
-    outliner.style.width = `${gCellWidth}px`;
-    outliner.style.height = `${gCellHeight}px`;
+    gOutlinerStartPosition.col = Math.floor(e.offsetX / gCellWidth);
+    gOutlinerStartPosition.row = Math.floor(e.offsetY / gCellHeight);
     // Set the moving flag for display the outline element
-    gOutlineMovingFlag = true;
+    gOutlinerMovingFlag = true;
 }
 
+/**
+ * Listener for the mousemove event.
+ * @param {*} e Event object.
+ * @returns
+ */
 function mouseMoveListener(e) {
     // Check moving flag
-    if (gOutlineMovingFlag) {
+    if (gOutlinerMovingFlag) {
         const outliner = document.getElementById('outliner-search');
-        let sRow = gOutlineStartPosition.row;
-        let sCol = gOutlineStartPosition.col;
+        let sRow = gOutlinerStartPosition.row;
+        let sCol = gOutlinerStartPosition.col;
         // Calculate actual position
         let aRow = Math.floor(e.offsetY / gCellHeight);
         let aCol = Math.floor(e.offsetX / gCellWidth);
@@ -319,37 +356,41 @@ function mouseMoveListener(e) {
             return;
         }
         outliner.classList.remove('hidden');
+        // Calculate deltas and initialize angle degradians
         let deltaRows = aRow - sRow;
         let deltaCols = aCol - sCol;
-        let deg = 0;
+        let theta = 0;
         // Check for directional conditions
         if (Math.abs(deltaCols) > 2 * Math.abs(deltaRows)) {
             aRow = sRow; // horizontal
         } else if (Math.abs(deltaRows) > 2 * Math.abs(deltaCols)) {
-            aCol = sCol; // Vertical
+            aCol = sCol; // vertical
         } else {
             if (aRow > sRow && aCol > sCol) {
-                deg = 45; // diagonal down normal
+                theta = 45; // diagonal down normal
             } else if (aRow < sRow && aCol < sCol) {
-                deg = -135; // diagonal down reverse
+                theta = -135; // diagonal down reverse
             } else if (aRow > sRow && aCol < sCol) {
-                deg = 135; // diagonal up reverse
+                theta = 135; // diagonal up reverse
             } else if (aRow < sRow && aCol > sCol) {
-                deg = -45; // diagonal up normal
+                theta = -45; // diagonal up normal
             }
             aRow = sRow;
             // Calculate the hypothenusa of delta for diagonal widths
-            aCol = sCol + Math.sqrt(2 * deltaCols * deltaCols);
+            const delta = Math.min(deltaRows, deltaCols);
+            aCol = sCol + Math.sqrt(2 * delta * delta);
         }
         // Prepare the outline element
-        let x = Math.floor(Math.min(sCol, aCol) * gCellWidth);
-        let y = Math.floor(Math.min(sRow, aRow) * gCellHeight);
-        let w = Math.floor((Math.abs(aCol - sCol) + 1) * gCellWidth);
-        let h = Math.floor((Math.abs(aRow - sRow) + 1) * gCellHeight);
+        const xPadding = Math.floor(((1 - gOutlinerFactor) * gCellWidth) / 2) + 1;
+        const yPadding = Math.floor(((1 - gOutlinerFactor) * gCellHeight) / 2) + 1;
+        let x = Math.floor(Math.min(sCol, aCol) * gCellWidth) + xPadding + 1;
+        let y = Math.floor(Math.min(sRow, aRow) * gCellHeight) + yPadding + 1;
+        let w = Math.floor((Math.abs(aCol - sCol) + 1) * gCellWidth) - 2 * xPadding;
+        let h = Math.floor((Math.abs(aRow - sRow) + 1) * gCellHeight) - 2 * yPadding;
         outliner.style.left = `${x}px`;
         outliner.style.top = `${y}px`;
-        outliner.style.transformOrigin = `${gCellWidth / 2}px ${gCellHeight / 2}px`;
-        outliner.style.transform = `rotate(${deg}deg)`;
+        outliner.style.transformOrigin = `${h / 2}px ${h / 2}px`;
+        outliner.style.transform = `rotate(${theta}deg)`;
         outliner.style.width = `${w}px`;
         outliner.style.height = `${h}px`;
         // Check the word under the outline
@@ -357,17 +398,25 @@ function mouseMoveListener(e) {
     }
 }
 
+function mouseOutListener(e) {
+    // DOM elements
+    const outliner = document.getElementById('outliner-search');
+    // Hide the outline element and reset moving flag
+    outliner.classList.add('hidden');
+    gOutlinerMovingFlag = false;
+}
+
 function mouseUpListener(e) {
     // DOM elements
     const outliner = document.getElementById('outliner-search');
     // Update the outline position, angle and size
-    let sRow = gOutlineStartPosition.row;
-    let sCol = gOutlineStartPosition.col;
+    let sRow = gOutlinerStartPosition.row;
+    let sCol = gOutlinerStartPosition.col;
     let eRow = Math.floor(e.offsetY / gCellHeight);
     let eCol = Math.floor(e.offsetX / gCellWidth);
     // Hide the outline element and reset moving flag
     outliner.classList.add('hidden');
-    gOutlineMovingFlag = false;
+    gOutlinerMovingFlag = false;
     // Restore the word under the outliner
     let word = restoreWordUnderOutliner(eRow, eCol);
     // Check found word in list
@@ -384,14 +433,16 @@ function mouseUpListener(e) {
         markWordAsFound(word)
         // Verify game over condition
         if (wordsRemain() === 0) {
-            // @TODO: GAME OVER !!!
+            let msg = 'You have found all the words!<br>';
+            msg += 'Press RESTART button or refresh page to play again.';
+            msgbox('Congratulations!', msg, 'Restart', clickToRestart);
         }
     }
 }
 
 function restoreWordUnderOutliner(eRow, eCol) {
-    let sRow = gOutlineStartPosition.row;
-    let sCol = gOutlineStartPosition.col;
+    let sRow = gOutlinerStartPosition.row;
+    let sCol = gOutlinerStartPosition.col;
     let word = '';
     do {
         word += gBoard[sRow][sCol];
@@ -404,7 +455,7 @@ function restoreWordUnderOutliner(eRow, eCol) {
 
 function findWordInList(word) {
     const list = [...document.querySelectorAll('#list-container li:not(.found)')];
-    return list.find(element => element.innerHTML === word);
+    return list.find(element => element.dataset.clean === word);
 }
 
 function markWordAsFound(word) {
@@ -422,6 +473,18 @@ function wordsRemain() {
     return list.length - found.length;
 }
 
+function clickToRestart(e) {
+    msgboxClose();
+    initGame();
+}
+
+// NAV BAR ICONS INICIALIZATION
+document.getElementById('btn-info').addEventListener('click', () => { msgbox('About This Game', 'Work in progress...'); });
+document.getElementById('btn-help').addEventListener('click', () => { msgbox('How To Play', 'Work in progress...'); });
+document.getElementById('btn-stats').addEventListener('click', () => { msgbox('Statistics', 'Work in progress...'); });
+document.getElementById('btn-setup').addEventListener('click', () => { msgbox('Settings', 'Work in progress...'); });
+
+// RUN THE GAME
 initGame();
 
 // End of code.

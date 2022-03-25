@@ -22,22 +22,36 @@
     --highlight-color: #369;
     --grayed-color: #666;
 
-    --board-width: 512px;
-    --board-height: 512px;
+    --game-board-width: 512px;
+    --game-board-height: 512px;
 
-    --board-cols: 18;
-    --board-rows: 18;
+    --board-border: 1px;
+    --board-padding: 16px;
 
-    --tile-width: 24px;
-    --tile-height: 24px;
+    --board-width: calc(var(--game-board-width) - 2 * var(--board-padding) - 2 * var(--board-border));
+    --board-height: calc(var(--game-board-height) - 2 * var(--board-padding) - 2 * var(--board-border));
+
+    --board-cols: 16;
+    --board-rows: 16;
+
+    --tile-width: calc(var(--board-width) / var(--board-cols));
+    --tile-height: calc(var(--board-height) / var(--board-rows));
 }
 
 :root .darkmode {
+    --header-color: white;
+    --header-bg-color: black;
+
     --normal-color: white;
     --normal-bg-color: #111;
+
     --board-color: white;
     --board-bg-color: #333;
+
     --grayed-color: #999;
+
+    --highlight-color: #69c;
+    --grayed-color: #ccc;
 }
 
 * {
@@ -52,7 +66,7 @@ body {
     background-color: var(--normal-bg-color);
     display: flex;
     height: 100vh;
-    min-width: var(--board-width);
+    min-width: var(--game-board-width);
     flex-direction: column;
     justify-content: start;
     align-items: center;
@@ -60,7 +74,7 @@ body {
 }
 
 header {
-    max-width: var(--board-width);
+    max-width: var(--game-board-width);
     min-height: 38px;
     color: var(--header-color);
     background-color: var(--header-bg-color);
@@ -71,7 +85,7 @@ main {
 }
 
 footer {
-    width: var(--board-width);
+    width: var(--game-board-width);
     color: var(--grayed-color);
     text-align: center;
     padding: 16px;
@@ -83,7 +97,8 @@ footer {
     flex-wrap: nowrap;
     justify-content: space-between;
     align-items: center;
-    width: var(--board-width);
+    width: var(--game-board-width);
+    padding: 0 8px;
 }
 #navbar-cont h1 {
     order: 2;
@@ -101,12 +116,13 @@ footer {
 }
 
 /* WORD SEARCH GAME STYLES */
+
 .game-board {
     color: var(--board-color);
     background-color: var(--board-bg-color);
     box-sizing: border-box;
-    width: var(--board-width);
-    height: var(--board-width);
+    width: var(--game-board-width);
+    height: var(--game-board-height);
     border: 1px solid var(--board-color);
     border-radius: 16px;
     padding: 16px;
@@ -131,20 +147,19 @@ footer {
 
 .letter-tile {
     display: inline-block;
-    width: calc(100% / var(--board-cols));
-    height: calc(100% / var(--board-rows));
-    line-height: 30px;
-    font-size: 1.25em;
-    top: 0;
+    width: var(--tile-width);
+    height: var(--tile-height);
+    line-height: var(--tile-height);
+    font-size: calc(var(--tile-height) * 0.5 );
     white-space: nowrap;
     text-align: center;
     text-transform: uppercase;
-    font-size: 90%;
     font-weight: bold;
     z-index: 1;
 }
 
 /* word-search */
+
 #word-search-layer {
     position: absolute;
     top: 0;
@@ -161,20 +176,22 @@ footer {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 4;
+    z-index: 2;
     pointer-events: none;
 }
+
+/* outliner */
 
 .outliner {
     display: block;
     position: absolute;
-    border: 1px solid black;
     border-radius: 24px;
     pointer-events: none;
 }
 #outliner-search {
+    border: 1px solid var(--highlight-color);
     background-color: var(--highlight-color);
-    opacity: 0.25;
+    opacity: 0.5;
 }
 .outliner.hidden {
     display: none;
@@ -188,15 +205,18 @@ footer {
 /* word-list */
 
 #list-container {
-    max-width: var(--board-width);
+    max-width: var(--game-board-width);
     columns: 2;
     text-transform: uppercase;
-    padding: 16px;
+    padding: var(--board-padding);
 }
 #list-container li {
     list-style: none;
+    font-weight: bold;
 }
 #list-container li.found {
+    color: var(--grayed-color);
     list-style: none;
     text-decoration: line-through;
+    font-weight: normal;
 }
