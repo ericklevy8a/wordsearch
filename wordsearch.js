@@ -16,11 +16,21 @@ const DIR_VERTICAL = 'v';
 const DIR_DIAGONAL_UP = 'u';
 const DIR_DIAGONAL_DOWN = 'd';
 
-// Virtual list of words
-var gWords = [];
+// Global game variables
+var gSets = []; // Store the parsed contents of words.json file
+var gSet = {} // Store the picked set and his data
+var gWords = []; // the list of words to search
+var gBoard = null; // virtual game board
 
-// Virtual game board
-var gBoard = null;
+// Try to get the game state, statistical and settings structures from local storage
+// let gameState = getGameState() || false;
+let gameSettings = getGameSettings() || false;
+// let gameStatistics = getGameStatistics() || false;
+
+// If present, apply some gamesettings
+if (gameSettings) {
+    if (gameSettings.darkTheme) document.body.classList.add('dark-theme');
+}
 
 /**
  * Initialize the virtual board and fill all positions with INIT_CHAR
@@ -187,7 +197,9 @@ function displayBoard() {
  * Generates DOM elements to display the list of words
  */
 function displayWordList(list) {
-    let wordList = document.getElementById('list-container');
+    const listTitle = document.getElementById('list-title');
+    const wordList = document.getElementById('list-container');
+    listTitle.innerHTML = `<h2>${gSet.title}</h2>`
     wordList.innerHTML = '';
     list.forEach(item => {
         let li = document.createElement('li');
@@ -220,11 +232,13 @@ function reverseString(str) {
 // INITIALIZE GAME
 
 /**
- * Integrates all the initilization for a new word search game
+ * Integrates all the initilizations for a new word search game.
  */
 async function initGame() {
     // Select a set of words
-    gWords = await getRandomWordSet();
+    if (gameSettings)
+        gSet = await getWordSet();
+    gWords = gSet.words;
     // Create game board
     initBoard();
     // Initialize a map of the word list
@@ -266,34 +280,20 @@ async function initGame() {
 }
 
 /**
- * Fetchs a JSON file with a collection of sets of 20 words each and randomly pick one
- * @returns A randomly picked 20 words set (or a default one).
+ * Fetchs the words.json file and get one of the word sets.
+ * @param {string} name
+ * @returns A word set (or a default one).
  */
-async function getRandomWordSet() {
-    const jsonWordSets = await fetch('./words.json')
+async function getWordSet(name = 'random') {
+    // Fetch the file
+    gSets = await fetch('./words.json')
         .then(response => { return response.json(); });
-    return jsonWordSets[Math.floor(Math.random() * jsonWordSets.length)] || [
-        'this is a',
-        'default',
-        'list of',
-        'words',
-        'and its presence',
-        'means',
-        'there was',
-        'an error',
-        'configuration',
-        'existence',
-        'collection',
-        'json file',
-        'should be',
-        'verified',
-        'even so',
-        'you can play',
-        'with the',
-        'phrases',
-        'of this',
-        'message'
-    ];
+    // If no set name as passed, then pick a random set
+    if (name === 'random') {
+        return gSets[Math.floor(Math.random() * gSets.length)];
+    } else {
+        return gSets.find(set => set.name === name);
+    }
 }
 
 /**
@@ -303,13 +303,13 @@ async function getRandomWordSet() {
  */
 function cleanWord(word) {
     return word
-        .replaceAll(' ', '')
         .replace(/[áâàä]/g, 'a')
         .replace(/[éêèë]/g, 'e')
         .replace(/[íîìï]/g, 'i')
         .replace(/[óôòö]/g, 'o')
         .replace(/[úûùü]/g, 'u')
-        .replace(/[úûùü]/g, 'u');
+        .replace(/[úûùü]/g, 'u')
+        .replace(/[\s']/g, '');
 }
 
 // WORD SEARCHING EVENTS AND OUTLINERS
@@ -322,8 +322,10 @@ var gOutlinerFactor = 0.75;
 var gOutlinerMovingFlag = false;
 var gOutlinerStartPosition = { row: 0, col: 0 };
 
+var gFoundWords = 0;
+
 /**
- * Listener for the mousedown event.
+ * Listener for the mousedown event. Starts the word outline process by setting the start position.
  * @param {*} e Event object.
  */
 function mouseDownListener(e) {
@@ -337,9 +339,8 @@ function mouseDownListener(e) {
 }
 
 /**
- * Listener for the mousemove event.
+ * Listener for the mousemove event. Calculate the actual position and draw an outliner element.
  * @param {*} e Event object.
- * @returns
  */
 function mouseMoveListener(e) {
     // Check moving flag
@@ -356,7 +357,7 @@ function mouseMoveListener(e) {
             return;
         }
         outliner.classList.remove('hidden');
-        // Calculate deltas and initialize angle degradians
+        // Calculate deltas and initialize diagonal angle
         let deltaRows = aRow - sRow;
         let deltaCols = aCol - sCol;
         let theta = 0;
@@ -376,28 +377,31 @@ function mouseMoveListener(e) {
                 theta = -45; // diagonal up normal
             }
             aRow = sRow;
-            // Calculate the hypothenusa of delta for diagonal widths
+            // Select the minor delta and calculate the hypothenusa for diagonal widths
             const delta = Math.min(deltaRows, deltaCols);
             aCol = sCol + Math.sqrt(2 * delta * delta);
         }
-        // Prepare the outline element
+        // Prepare the outliner dimensions
         const xPadding = Math.floor(((1 - gOutlinerFactor) * gCellWidth) / 2) + 1;
         const yPadding = Math.floor(((1 - gOutlinerFactor) * gCellHeight) / 2) + 1;
         let x = Math.floor(Math.min(sCol, aCol) * gCellWidth) + xPadding + 1;
         let y = Math.floor(Math.min(sRow, aRow) * gCellHeight) + yPadding + 1;
         let w = Math.floor((Math.abs(aCol - sCol) + 1) * gCellWidth) - 2 * xPadding;
         let h = Math.floor((Math.abs(aRow - sRow) + 1) * gCellHeight) - 2 * yPadding;
+        // Apply dimension to DOM element
         outliner.style.left = `${x}px`;
         outliner.style.top = `${y}px`;
         outliner.style.transformOrigin = `${h / 2}px ${h / 2}px`;
         outliner.style.transform = `rotate(${theta}deg)`;
         outliner.style.width = `${w}px`;
         outliner.style.height = `${h}px`;
-        // Check the word under the outline
-        // Stylize the outline to show word found
     }
 }
 
+/**
+ * Listener for the mouseout event. Cancel the word outline process when the mouse cursor leaves the board.
+ * @param {*} e Event object.
+ */
 function mouseOutListener(e) {
     // DOM elements
     const outliner = document.getElementById('outliner-search');
@@ -406,33 +410,40 @@ function mouseOutListener(e) {
     gOutlinerMovingFlag = false;
 }
 
+/**
+ * Listener for the mouseup event. Finish the word outline process and validate the found word.
+ * @param {*} e Event object.
+ */
 function mouseUpListener(e) {
     // DOM elements
     const outliner = document.getElementById('outliner-search');
-    // Update the outline position, angle and size
-    let sRow = gOutlinerStartPosition.row;
-    let sCol = gOutlinerStartPosition.col;
+    // Get the end position
     let eRow = Math.floor(e.offsetY / gCellHeight);
     let eCol = Math.floor(e.offsetX / gCellWidth);
-    // Hide the outline element and reset moving flag
+    // Hide the outliner element and reset moving flag
     outliner.classList.add('hidden');
     gOutlinerMovingFlag = false;
-    // Restore the word under the outliner
-    let word = restoreWordUnderOutliner(eRow, eCol);
+    // Get the word under the outliner
+    let word = getWordFound(eRow, eCol);
     // Check found word in list
-    if (findWordInList(word) !== undefined) {
+    if (checkWordNotFound(word) !== undefined) {
         // Copy the outline element to found words layer
         const wordFoundLayer = document.getElementById('word-found-layer');
         const outlinerClone = outliner.cloneNode();
-        // Change color of found outliner
+        // Change color of outliner clone
         outlinerClone.classList.add('highlight');
+        // If game setting for colorful mode its true
+        if (true) { // @TODO use game settings from local storage
+            // Select a distinct color
+            outlinerClone.classList.add('color' + (gFoundWords++ % 10));
+        }
         outlinerClone.classList.remove('hidden');
         outlinerClone.id = 'ouliner-found-' + word;
         wordFoundLayer.appendChild(outlinerClone);
         // Cross the found word in the list
         markWordAsFound(word)
-        // Verify game over condition
-        if (wordsRemain() === 0) {
+        // Verify GAME OVER condition
+        if (countWordsNotFound() === 0) {
             let msg = 'You have found all the words!<br>';
             msg += 'Press RESTART button or refresh page to play again.';
             msgbox('Congratulations!', msg, 'Restart', clickToRestart);
@@ -440,7 +451,13 @@ function mouseUpListener(e) {
     }
 }
 
-function restoreWordUnderOutliner(eRow, eCol) {
+/**
+ * Get the word found from start to end position.
+ * @param {number} eRow The row from outliner end position.
+ * @param {number} eCol The column from outliner end position.
+ * @returns {string} The word found.
+ */
+function getWordFound(eRow, eCol) {
     let sRow = gOutlinerStartPosition.row;
     let sCol = gOutlinerStartPosition.col;
     let word = '';
@@ -453,13 +470,23 @@ function restoreWordUnderOutliner(eRow, eCol) {
     return word;
 }
 
-function findWordInList(word) {
+/**
+ * Validate if the word is in the NOT FOUND portion of the list of words to search.
+ * @param {string} word The word to find in list.
+ * @returns {boolean} True if the word is still in not found part of the list.
+ */
+function checkWordNotFound(word) {
     const list = [...document.querySelectorAll('#list-container li:not(.found)')];
     return list.find(element => element.dataset.clean === word);
 }
 
+/**
+ * Mark the word as found in the list of words to search.
+ * @param {string} word The word to be marked as found.
+ * @returns True if the word could be marked.
+ */
 function markWordAsFound(word) {
-    const element = findWordInList(word);
+    const element = checkWordNotFound(word);
     if (element) {
         element.classList.add('found');
         return true;
@@ -467,22 +494,253 @@ function markWordAsFound(word) {
     return false;
 }
 
-function wordsRemain() {
-    const list = [...document.querySelectorAll('#list-container li')];
-    const found = [...document.querySelectorAll('#list-container li.found')]
-    return list.length - found.length;
+/**
+ * Gets the count of words in the NOT FOUND portion of the search word list.
+ * @returns {number} The word count.
+ */
+function countWordsNotFound() {
+    return [...document.querySelectorAll('#list-container li:not(.found)')].length;
 }
 
+/**
+ * Listener to RESTART button click event. Lets restart a new game.
+ * @param {*} e Event object.
+ */
 function clickToRestart(e) {
     msgboxClose();
     initGame();
 }
 
-// NAV BAR ICONS INICIALIZATION
-document.getElementById('btn-info').addEventListener('click', () => { msgbox('About This Game', 'Work in progress...'); });
-document.getElementById('btn-help').addEventListener('click', () => { msgbox('How To Play', 'Work in progress...'); });
+// LOCAL STORAGE FUNCTIONS
+
+/**
+ * Restores a game previusly saved in local storage or create a new one
+ */
+function restoreGameState() {
+    if (gameState) {
+        if (gameState.gameStatus === 'IN_PROGRESS') {
+            // Reconstructs the game from the stored state data
+            restoreBoardState();
+            // Restore timer and step counter
+            gStartTime = gameState.startTime;
+            gSteps = gameState.steps;
+        } else {
+            gameRestart();
+        }
+    } else {
+        msgbox('Error', 'There is a problem with local storage that prevents knowing the game status!');
+    }
+}
+
+/**
+ * Prepare the game board state for store
+ */
+function updateBoardState() {
+}
+
+/**
+ * Restore the game board state from store
+ */
+function restoreBoardState() {
+}
+
+/**
+ * Get the game state from local storage or creates a initial one
+ * @returns a structure with the game state data
+ */
+function getGameState() {
+    return getLocalStorageItem('wordsearch-state', {
+        boardState: [],
+        gameStatus: '',
+        startTime: 0,
+        steps: 0
+    });
+}
+
+/**
+ * Store the game state to local storage
+ */
+function setGameState() {
+    setLocalStorageItem('wordsearch-state', gameState);
+}
+
+/**
+ * Get the game statistics from local storage or creates a initial one
+ * @returns a structure with the game statistics data
+ */
+function getGameStatistics() {
+    return getLocalStorageItem('wordsearch-statistics', {
+        gamesPlayed: 0,
+    });
+}
+
+/**
+ * Store the game statistics to local storage
+ */
+function setGameStatistics() {
+    setLocalStorageItem('wordsearch-statistics', gameStatistics);
+}
+
+/**
+ * Get the game settings from local storage or creates a initial one
+ * @returns a structure with the game settings data
+ */
+function getGameSettings() {
+    return getLocalStorageItem('wordsearch-settings', {
+        darkTheme: false,
+        set: "random"
+    });
+}
+
+/**
+ * Store the game settings to local storage
+ */
+function setGameSettings() {
+    setLocalStorageItem('wordsearch-settings', gameSettings);
+}
+
+/**
+ * Save an item in local storage
+ * @param {string} key - The name or key of the item
+ * @param {*} value - The value to stringify and save
+ */
+function setLocalStorageItem(key, value) {
+    if (typeof (Storage) !== 'undefined') {
+        localStorage.setItem(key, JSON.stringify(value));
+    }
+}
+
+/**
+ * Get an item value from local storage
+ * @param {string} key  - The name or key of the item
+ * @param {*} value - A default value to return in case of fail
+ * @returns A parsed object or the default value or false
+ */
+function getLocalStorageItem(key, value = false) {
+    if (typeof (Storage) !== 'undefined') {
+        return JSON.parse(localStorage.getItem(key)) || value;
+    }
+}
+
+// NAV BAR ACTIONS
+
+function showAbout() {
+    let msg = `
+        <div id="about-container">
+            <p>© Copyright 2022 by Erick Levy!</p>
+            <p>Some time ago I had a more relaxed stage in my life in which one of my favorite pastimes
+            was solving the <b>word search</b> puzzles that were published in the newspaper of my city.</p>
+            <p>Thank you for taking the time to learn about and play with this little app.</p>
+            <h5>Other Games</h5>
+            <p>There are other games and Apps I was implemented and published. If you want to take a look at them,
+            here are the links: </p>
+            <ul>
+                <li><a href="../switcher/"><i class="switcher"></i>The Switcher Game</a></li>
+                <li><a href="../tileslider/"><i class="tileslider"></i>The Tile Slider</a></li>
+                <li><a href="../wordle/"><i class="wordle"></i>Wordle Clone</a></li>
+                <li><a href="../memorama/"><i class="memorama"></i>Memorama</a></li>
+                <li><a href="../pokedex/"><i class="pokedex"></i>Pokedex (not a game)</a></li>
+            </ul>
+        </div>
+    `;
+    msgbox('About This Game', msg);
+}
+
+function showHelp() {
+    let msg = `
+        <div id="help-container">
+            <p>The objective of this puzzle is to find and mark all the words hidden inside the grid.</p>
+            <p>The words may be placed horizontally, vertically, or diagonally, and can be reversed.</p>
+            <p>A list of the hidden words is provided and have a theme to which all the words are related
+             such as food, animals, or colors.</p>
+            <p>The game is over when there are no more words of the list hidden on the grid.</p>
+        </div>
+    `;
+    msgbox('How To Play', msg);
+}
+
+// Use msgbox to display a modal settings dialog
+function showSettings() {
+    let html = `
+        <div id="settings-container">
+
+            <div class="setting">
+                <div class="Text">
+                    <div class="title">Dark Theme</div>
+                    <div class="description">Reduce luminance to ergonmy levels</div>
+                </div>
+                <div class="control">
+                    <div class="switch" id="dark-theme" name="dark-theme">
+                        <div class="knob">&nbsp;</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="setting vertical">
+                <div class="Text">
+                    <div class="title">Word Set</div>
+                    <div class="description">Choose your favorite or let the game pick a random</div>
+                </div>
+                <div class="set-select">
+                    <select name="set">
+                        <option value="random">Random (default)</option>`;
+    gSets.forEach(set => {
+        html += `
+                        <option value="${set.name}">${set.title}</option>`;
+    });
+    html += `
+                    </select>
+                </div>
+            </div>
+
+        </div>`;
+    msgbox('Settings', html);
+    // Check for dark theme mode value and initialize its checked attribute
+    if (gameSettings.darkTheme) document.getElementById('dark-theme').setAttribute('checked', '');
+    // Check for actual image set value and initialize its option selected attribute
+    if (gameSettings.set) document.querySelector(`option[value='${gameSettings.set}']`).setAttribute('selected', '');
+    // Event listener for changes in the settings controls
+    document.getElementById('settings-container').addEventListener('click', (e) => {
+        let target = e.target;
+        let name = target.getAttribute('name');
+
+        // Dark Theme (check type control)
+        if (name == 'dark-theme') {
+            // Inverts checked state and update game setting
+            let checked = (target.getAttribute('checked') == null);
+            gameSettings.darkTheme = checked;
+            // Apply setting on game and update the input checked state
+            if (checked) {
+                document.body.classList.add('dark-theme');
+                target.setAttribute('checked', '');
+            } else {
+                document.body.classList.remove('dark-theme');
+                target.removeAttribute('checked');
+            }
+        }
+
+        // Card image set (image select option type control)
+        if (name == 'set') {
+            // Update image options selected state
+            let lastSelected = document.querySelector('.image-option[name="set"][selected]');
+            if (lastSelected) lastSelected.removeAttribute('selected');
+            target.setAttribute('selected', '');
+            // Update game setting
+            gameSettings.set = target.dataset.value;
+            // Apply setting to actual game
+            changeCardSet();
+        }
+
+        // Store configuration in local storage
+        setGameSettings();
+    });
+}
+
+// Nav bar initialization
+document.getElementById('btn-info').addEventListener('click', showAbout);
+document.getElementById('btn-help').addEventListener('click', showHelp);
 document.getElementById('btn-stats').addEventListener('click', () => { msgbox('Statistics', 'Work in progress...'); });
-document.getElementById('btn-setup').addEventListener('click', () => { msgbox('Settings', 'Work in progress...'); });
+document.getElementById('btn-setup').addEventListener('click', showSettings);
 
 // RUN THE GAME
 initGame();

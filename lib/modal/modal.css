@@ -9,8 +9,8 @@
 
     --modal-hover-color: #c33;
 
-    --modal-dialog-color: #000;
-    --modal-dialog-bg-color: #fff;
+    --modal-dialog-color: #fff;
+    --modal-dialog-bg-color: #333;
 
     --modal-button-color: #000;
     --modal-button-bg-color: #ccc;
@@ -42,8 +42,9 @@
 .modal .modal-dialog {
     color: var(--modal-dialog-color);
     background-color: var(--modal-dialog-bg-color);
+    max-width: 512px;
     padding: 0;
-    border: none;
+    border: 1px solid var(--modal-header-color);
     border-radius: 8px;
     box-shadow: 4px 4px 16px black;
 }
@@ -89,9 +90,23 @@
     flex-grow: 1;
     padding: 0 20px;
 }
-
+.modal .modal-body h5 {
+    font-size: large;
+    margin-top: 1em;
+}
 .modal .modal-body p {
     text-align: justify;
+    margin-top: 1em;
+}
+.modal .modal-body li {
+    list-style: none;
+}
+.modal .modal-body a {
+    color: var(--modal-dialog-color);
+    text-decoration: none;
+}
+.modal .modal-body a:hover {
+    color: var(--modal-hover-color);
 }
 
 .modal .modal-body label {

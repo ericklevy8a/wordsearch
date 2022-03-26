@@ -38,7 +38,7 @@
     --tile-height: calc(var(--board-height) / var(--board-rows));
 }
 
-:root .darkmode {
+:root .dark-theme {
     --header-color: white;
     --header-bg-color: black;
 
@@ -81,7 +81,7 @@ header {
 }
 
 main {
-    margin: 16px 0;
+    margin: 0;
 }
 
 footer {
@@ -116,6 +116,10 @@ footer {
 }
 
 /* WORD SEARCH GAME STYLES */
+
+#list-title {
+    text-align: center;
+}
 
 .game-board {
     color: var(--board-color);
@@ -201,22 +205,90 @@ footer {
     background-color: var(--grayed-color);
     opacity: 0.25;
 }
+.outliner.color0 { background-color: red; }
+.outliner.color1 { background-color: green; }
+.outliner.color2 { background-color: blue; }
+.outliner.color3 { background-color: magenta; }
+.outliner.color4 { background-color: yellow; }
+.outliner.color5 { background-color: aqua; }
+.outliner.color6 { background-color: orange; }
+.outliner.color7 { background-color: greenyellow; }
+.outliner.color8 { background-color: purple; }
+.outliner.color9 { background-color: grey; }
+
 
 /* word-list */
 
 #list-container {
     max-width: var(--game-board-width);
-    columns: 2;
-    text-transform: uppercase;
     padding: var(--board-padding);
+    text-align: center;
 }
 #list-container li {
+    display: inline-block;
     list-style: none;
+    margin: 0 8px;
+    text-transform: uppercase;
     font-weight: bold;
 }
 #list-container li.found {
     color: var(--grayed-color);
-    list-style: none;
     text-decoration: line-through;
     font-weight: normal;
 }
+
+/* Styling for settings dialog */
+
+.setting {
+    border-bottom: 1px solid #555;
+    padding: 16px 0;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+}
+.setting.vertical {
+    flex-direction: column;
+}
+.setting .title {
+    color: var(--default-color);
+    display: block;
+    font-size: 18px;
+}
+.setting .description {
+    float: left;
+    color: var(--default-color);
+    filter: brightness(0.5);
+    display: block;
+    font-size: 12px;
+}
+.setting .switch {
+    float: right;
+    background-color: #555;
+    height: 20px;
+    width: 32px;
+    padding: 2px;
+    border-radius: 10px;
+    position: relative;
+    cursor: pointer;
+}
+.setting .switch[checked] {
+    background-color: var(--highlight-color);
+}
+.setting .switch .knob {
+    display: block;
+    height: 16px;
+    width: 16px;
+    position: absolute;
+    left: 2px;
+    right: auto;
+    border-radius: 8px;
+    background-color: white;
+    transition: all 250ms;
+    pointer-events: none;
+}
+.setting .switch[checked] .knob {
+    right: 2px;
+    left: auto;
+}
+
+/* End of code. */
