@@ -16,31 +16,31 @@
     --normal-color: black;
     --normal-bg-color: #ccc;
 
-    --board-color: black;
-    --board-bg-color: white;
-
     --highlight-color: #369;
     --grayed-color: #666;
 
-    --game-board-width: 512px;
-    --game-board-height: 512px;
+    --board-color: black;
+    --board-bg-color: white;
+
+    --board-width: 512px;
+    --board-height: 512px;
 
     --board-border: 1px;
     --board-padding: 16px;
 
-    --board-width: calc(var(--game-board-width) - 2 * var(--board-padding) - 2 * var(--board-border));
-    --board-height: calc(var(--game-board-height) - 2 * var(--board-padding) - 2 * var(--board-border));
+    --grid-cols: 16;
+    --grid-rows: 16;
 
-    --board-cols: 16;
-    --board-rows: 16;
+    --grid-width: calc(var(--board-width) - 2 * var(--board-padding) - 2 * var(--board-border));
+    --grid-height: calc(var(--board-height) - 2 * var(--board-padding) - 2 * var(--board-border));
 
-    --tile-width: calc(var(--board-width) / var(--board-cols));
-    --tile-height: calc(var(--board-height) / var(--board-rows));
+    --tile-width: calc(var(--grid-width) / var(--grid-cols));
+    --tile-height: calc(var(--grid-height) / var(--grid-rows));
 }
 
 :root .dark-theme {
-    --header-color: white;
-    --header-bg-color: black;
+    --header-color: black;
+    --header-bg-color: white;
 
     --normal-color: white;
     --normal-bg-color: #111;
@@ -66,7 +66,7 @@ body {
     background-color: var(--normal-bg-color);
     display: flex;
     height: 100vh;
-    min-width: var(--game-board-width);
+    min-width: var(--board-width);
     flex-direction: column;
     justify-content: start;
     align-items: center;
@@ -74,18 +74,18 @@ body {
 }
 
 header {
-    max-width: var(--game-board-width);
+    max-width: var(--board-width);
     min-height: 38px;
     color: var(--header-color);
     background-color: var(--header-bg-color);
 }
 
 main {
-    margin: 0;
+    max-width: var(--board-width);
 }
 
 footer {
-    width: var(--game-board-width);
+    max-width: var(--board-width);
     color: var(--grayed-color);
     text-align: center;
     padding: 16px;
@@ -97,8 +97,8 @@ footer {
     flex-wrap: nowrap;
     justify-content: space-between;
     align-items: center;
-    width: var(--game-board-width);
-    padding: 0 8px;
+    width: var(--board-width);
+    padding: 0 4px;
 }
 #navbar-cont h1 {
     order: 2;
@@ -113,11 +113,24 @@ footer {
     border: none;
     color: var(--header-color);
     background-color: var(--header-bg-color);
+    padding: 0 4px;
+    cursor: pointer;
 }
 
 /* WORD SEARCH GAME STYLES */
 
-#list-title {
+.game-title {
+    color: var(--board-color);
+    background-color: var(--board-bg-color);
+    box-sizing: border-box;
+    border: 1px solid var(--board-color);
+    border-bottom: none;
+    border-radius: 16px 16px 0 0;
+    padding-top: 16px;
+    margin-top: 16px;
+}
+
+#title-container {
     text-align: center;
 }
 
@@ -125,28 +138,27 @@ footer {
     color: var(--board-color);
     background-color: var(--board-bg-color);
     box-sizing: border-box;
-    width: var(--game-board-width);
-    height: var(--game-board-height);
+    width: var(--board-width);
+    height: var(--board-height);
     border: 1px solid var(--board-color);
-    border-radius: 16px;
+    border-top: none;
+    border-radius: 0 0 16px 16px;
     padding: 16px;
 }
 
-#board-container {
+#grid-container {
     position: relative;
-    width: 100%;
-    height: 100%;
+    width: var(--grid-width);
+    height: var(--grid-height);
 }
 
-#tile-container {
+#letter-layer {
     position: absolute;
     top: 0;
     left: 0;
-    color: var(--board-color);
-    background-color: none;
-    box-sizing: border-box;
-    width: 100%;
-    height: 100%;
+    width: var(--grid-width);
+    height: var(--grid-height);
+    z-index: 1;
 }
 
 .letter-tile {
@@ -162,24 +174,24 @@ footer {
     z-index: 1;
 }
 
-/* word-search */
+/* search and found layers */
 
-#word-search-layer {
+#search-layer {
     position: absolute;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
+    width: var(--grid-width);
+    height: var(--grid-height);
     z-index: 3;
     color: var(--grayed-color);
     cursor: pointer;
 }
-#word-found-layer {
+#found-layer {
     position: absolute;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
+    width: var(--grid-width);
+    height: var(--grid-height);
     z-index: 2;
     pointer-events: none;
 }
@@ -216,12 +228,10 @@ footer {
 .outliner.color8 { background-color: purple; }
 .outliner.color9 { background-color: grey; }
 
-
 /* word-list */
 
 #list-container {
-    max-width: var(--game-board-width);
-    padding: var(--board-padding);
+    max-width: var(--board-width);
     text-align: center;
 }
 #list-container li {
@@ -236,6 +246,16 @@ footer {
     text-decoration: line-through;
     font-weight: normal;
 }
+
+/* Styling for about dialog */
+
+ul { margin-top: 1em; }
+i { display: inline-block; width: 16px; height: 16px; background-size: cover; margin-right: 8px; }
+i.switcher { background-image: url(./img/switcher.png); }
+i.tileslider { background-image: url(./img/tileslider.png); }
+i.wordle { background-image: url(./img/wordle.png); }
+i.memorama { background-image: url(./img/memorama.png); }
+i.pokedex { background-image: url(./img/pokedex.png); }
 
 /* Styling for settings dialog */
 
@@ -289,6 +309,10 @@ footer {
 .setting .switch[checked] .knob {
     right: 2px;
     left: auto;
+}
+
+.hide {
+    display: none;
 }
 
 /* End of code. */
