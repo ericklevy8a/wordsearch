@@ -23,6 +23,8 @@ var gSet = {}; // the actual game picked set
 var gWords = []; // the list of words to search
 var gGrid = []; // virtual game grid
 
+var gForceNewGame = false;
+
 // Try to get the game state, statistical and settings structures from local storage
 let gGameState = getGameState() || false;
 let gGameSettings = getGameSettings() || false;
@@ -42,37 +44,42 @@ if (gGameSettings) {
 async function initGame() {
     // Check for a previous game IN PROGRESS to restore, or create a new one
     if (gGameState && gGameState.status === 'IN_PROGRESS') {
-        gSet = await getWordSet(gGameState.set);
+        gSet = await getWordSet(gGameState.set.name);
         restoreGame();
     } else {
-        gSet = await getWordSet(gGameSettings.set);
+        gSet = await getWordSet(gGameSettings.setName);
         // Create and initialize the letters grid
         initGrid();
         // Prepare a list of word objects from the set and initialize its data
-        let gWords = gSet.words.map((word, index) => {
+        let gWords = await gSet.words.map((word, index) => {
             return {
                 index: index, // original position of the word within the list
                 word: word, // the original word to put in the search list
                 clean: cleanWord(word), // a cleaned version of the word to put in the grid (only valid chars)
-                inGrid: false, // a flag to know if the word is already located in the grid
+                placed: false, // a flag to know if the word is already placed in the grid
                 found: false, // a flag to know if the word is already found by player
             }
         });
         // Sort items by word length descending for efficiency
         gWords.sort((a, b) => b.clean.length - a.clean.length);
-        // Force the words into the grid and update its inGrid state
-        gWords.forEach(item => item.inGrid = forceWord(item.clean));
+        // Force the words into the grid and update its placed state
+        gWords.forEach(item => item.placed = forceWord(item.clean));
         // Complete the grid and display
         fillGridSpaces();
         displayGrid();
-        // Filter only inGrid words and sort by index to restore the original list order
-        gWords = gWords.filter(item => item.inGrid).sort((a, b) => a.index - b.index);
+        // Filter only placed words and sort by index to restore the original list order
+        gWords = gWords.filter(item => item.placed).sort((a, b) => a.index - b.index);
         // Display in the search words list
         displayWordList(gWords);
         gGameState.status = 'IN_PROGRESS';
+        gGameState.found = '';
         backupGame(gSet, gGrid, gWords);
         prepareOutliner();
     }
+}
+
+function createNewGame() {
+
 }
 
 function prepareOutliner() {
@@ -91,8 +98,8 @@ function prepareOutliner() {
     // Add mouse event listeners
     gridCont.addEventListener('mousedown', mouseDownListener);
     gridCont.addEventListener('mousemove', mouseMoveListener);
-    gridCont.addEventListener('mouseup', mouseUpListener);
     gridCont.addEventListener('mouseout', mouseOutListener);
+    document.body.addEventListener('mouseup', mouseUpListener);
 }
 
 /**
@@ -197,7 +204,7 @@ function putWord(word, row, col, dir, reverse = false) {
 function putWordHorizontal(word, row, col) {
     // Do some validations
     if (row < 0 || row >= GRID_ROWS || col < 0 || col >= GRID_COLS) return false;
-    if (word.length < 0 || col + word.length > GRID_COLS) return false;
+    if (word.length === 0 || col + word.length > GRID_COLS) return false;
     // Word position validation
     for (let i = 0; i < word.length; i++) {
         if (gGrid[row][col + i] !== INIT_CHAR && gGrid[row][col + i] !== word[i]) {
@@ -213,7 +220,7 @@ function putWordHorizontal(word, row, col) {
 function putWordVertical(word, row, col) {
     // Do some validations
     if (row < 0 || row >= GRID_ROWS || col < 0 || col >= GRID_COLS) return false;
-    if (word.length < 0 || row + word.length > GRID_ROWS) return false;
+    if (word.length === 0 || row + word.length > GRID_ROWS) return false;
     // Word position validation
     for (let i = 0; i < word.length; i++) {
         if (gGrid[row + i][col] !== INIT_CHAR && gGrid[row + i][col] !== word[i]) {
@@ -229,7 +236,7 @@ function putWordVertical(word, row, col) {
 function putWordDiagonalUp(word, row, col) {
     // Do some validations
     if (row < 0 || row >= GRID_ROWS || col < 0 || col >= GRID_COLS) return false;
-    if (word.length < 0 || col + word.length > GRID_COLS || row - (word.length - 1) < 0) return false;
+    if (word.length === 0 || col + word.length > GRID_COLS || row - (word.length - 1) < 0) return false;
     // Word position validation
     for (let i = 0; i < word.length; i++) {
         if (gGrid[row - i][col + i] !== INIT_CHAR && gGrid[row - i][col + i] !== word[i]) {
@@ -245,7 +252,7 @@ function putWordDiagonalUp(word, row, col) {
 function putWordDiagonalDown(word, row, col) {
     // Do some validations
     if (row < 0 || row >= GRID_ROWS || col < 0 || col >= GRID_COLS) return false;
-    if (word.length < 0 || col + word.length > GRID_COLS || row + word.length > GRID_ROWS) return false;
+    if (word.length === 0 || col + word.length > GRID_COLS || row + word.length > GRID_ROWS) return false;
     // Word position validation
     for (let i = 0; i < word.length; i++) {
         if (gGrid[row + i][col + i] !== INIT_CHAR && gGrid[row + i][col + i] !== word[i]) {
@@ -332,13 +339,14 @@ function reverseString(str) {
 
 // WORD SEARCHING EVENTS AND OUTLINER
 
-var gCellWidth = 0;
-var gCellHeight = 0;
+var gTileWidth = 0;
+var gTileHeight = 0;
 
 var gOutlinerFactor = 0.75;
 
-var gOutlinerMovingFlag = false;
-var gOutlinerStartPosition = { row: 0, col: 0 };
+var gOutlinerMoving = false;
+var gOutlinerStart = { row: 0, col: 0 };
+var gOutlinerEnd = { row: 0, col: 0 };
 
 var gFoundWords = 0;
 
@@ -348,12 +356,14 @@ var gFoundWords = 0;
  */
 function mouseDownListener(e) {
     // Calculate and store the outline start position
-    gCellWidth = (e.target.offsetWidth / GRID_COLS);
-    gCellHeight = (e.target.offsetHeight / GRID_ROWS);
-    gOutlinerStartPosition.col = Math.floor(e.offsetX / gCellWidth);
-    gOutlinerStartPosition.row = Math.floor(e.offsetY / gCellHeight);
+    gTileWidth = (e.target.offsetWidth / GRID_COLS);
+    gTileHeight = (e.target.offsetHeight / GRID_ROWS);
+    gOutlinerStart.col = Math.floor(e.offsetX / gTileWidth);
+    gOutlinerStart.row = Math.floor(e.offsetY / gTileHeight);
+    gOutlinerEnd.col = gOutlinerStart.col;
+    gOutlinerEnd.row = gOutlinerStart.row;
     // Set the moving flag for display the outline element
-    gOutlinerMovingFlag = true;
+    gOutlinerMoving = true;
 }
 
 /**
@@ -362,18 +372,20 @@ function mouseDownListener(e) {
  */
 function mouseMoveListener(e) {
     // Check moving flag
-    if (gOutlinerMovingFlag) {
+    if (gOutlinerMoving) {
         const outliner = document.getElementById('outliner-search');
-        let sRow = gOutlinerStartPosition.row;
-        let sCol = gOutlinerStartPosition.col;
+        const sRow = gOutlinerStart.row;
+        const sCol = gOutlinerStart.col;
         // Calculate actual position
-        let aRow = Math.floor(e.offsetY / gCellHeight);
-        let aCol = Math.floor(e.offsetX / gCellWidth);
+        let aRow = Math.floor(e.offsetY / gTileHeight);
+        let aCol = Math.floor(e.offsetX / gTileWidth);
         // Validate if still in the start position
         if (aCol === sCol && aRow === sRow) {
+            // Hide the outliner DOM element
             outliner.classList.add('hidden');
             return;
         }
+        // Show the outliner DOM element
         outliner.classList.remove('hidden');
         // Calculate deltas and initialize diagonal angle
         let deltaRows = aRow - sRow;
@@ -382,8 +394,12 @@ function mouseMoveListener(e) {
         // Check for directional conditions
         if (Math.abs(deltaCols) > 2 * Math.abs(deltaRows)) {
             aRow = sRow; // horizontal
+            gOutlinerEnd.row = aRow;
+            gOutlinerEnd.col = aCol;
         } else if (Math.abs(deltaRows) > 2 * Math.abs(deltaCols)) {
             aCol = sCol; // vertical
+            gOutlinerEnd.row = aRow;
+            gOutlinerEnd.col = aCol;
         } else {
             if (aRow > sRow && aCol > sCol) {
                 theta = 45; // diagonal down normal
@@ -396,23 +412,27 @@ function mouseMoveListener(e) {
             }
             aRow = sRow;
             // Select the minor delta and calculate the hypothenusa for diagonal widths
-            const delta = Math.min(deltaRows, deltaCols);
-            aCol = sCol + Math.sqrt(2 * delta * delta);
+            deltaRows = Math.min(Math.abs(deltaRows), Math.abs(deltaCols)) * Math.sign(deltaRows);
+            deltaCols = Math.min(Math.abs(deltaRows), Math.abs(deltaCols)) * Math.sign(deltaCols);
+            aCol = sCol + Math.sqrt(deltaRows * deltaRows + deltaCols * deltaCols);
+            gOutlinerEnd.row = Math.round(sRow + deltaRows);
+            gOutlinerEnd.col = Math.round(sCol + deltaCols);
         }
         // Prepare the outliner dimensions
-        const xPadding = Math.floor(((1 - gOutlinerFactor) * gCellWidth) / 2) + 1;
-        const yPadding = Math.floor(((1 - gOutlinerFactor) * gCellHeight) / 2) + 1;
-        let x = Math.floor(Math.min(sCol, aCol) * gCellWidth) + xPadding + 1;
-        let y = Math.floor(Math.min(sRow, aRow) * gCellHeight) + yPadding + 1;
-        let w = Math.floor((Math.abs(aCol - sCol) + 1) * gCellWidth) - 2 * xPadding;
-        let h = Math.floor((Math.abs(aRow - sRow) + 1) * gCellHeight) - 2 * yPadding;
+        const xPadding = Math.round(((1 - gOutlinerFactor) * gTileWidth) / 2);
+        const yPadding = Math.round(((1 - gOutlinerFactor) * gTileHeight) / 2);
+        let x = Math.round(Math.min(sCol, aCol) * gTileWidth) + xPadding;
+        let y = Math.round(Math.min(sRow, aRow) * gTileHeight) + yPadding;
+        let w = Math.round((Math.abs(aCol - sCol) + 1) * gTileWidth) - 2 * xPadding;
+        let h = Math.round((Math.abs(aRow - sRow) + 1) * gTileHeight) - 2 * yPadding;
+        // Store the outliner corrected end position
         // Apply dimension to DOM element
         outliner.style.left = `${x}px`;
         outliner.style.top = `${y}px`;
-        outliner.style.transformOrigin = `${h / 2}px ${h / 2}px`;
-        outliner.style.transform = `rotate(${theta}deg)`;
         outliner.style.width = `${w}px`;
         outliner.style.height = `${h}px`;
+        outliner.style.transform = `rotate(${theta}deg)`;
+        outliner.style.transformOrigin = `${h / 2}px ${h / 2}px`;
     }
 }
 
@@ -421,12 +441,11 @@ function mouseMoveListener(e) {
  * @param {*} e Event object.
  */
 function mouseOutListener(e) {
-    if (gOutlinerMovingFlag) {
+    if (gOutlinerMoving) {
         // DOM element
         const outliner = document.getElementById('outliner-search');
-        // Hide the outliner element and reset moving flag
+        // Hide the outliner element
         outliner.classList.add('hidden');
-        gOutlinerMovingFlag = false;
     }
 }
 
@@ -435,19 +454,21 @@ function mouseOutListener(e) {
  * @param {*} e Event object.
  */
 function mouseUpListener(e) {
-    if (gOutlinerMovingFlag) {
+    if (gOutlinerMoving) {
         // DOM elements
         const outliner = document.getElementById('outliner-search');
-        // Get the end position
-        let eRow = Math.floor(e.offsetY / gCellHeight);
-        let eCol = Math.floor(e.offsetX / gCellWidth);
         // Hide the outliner element and reset moving flag
         outliner.classList.add('hidden');
-        gOutlinerMovingFlag = false;
+        gOutlinerMoving = false;
+        if (e.target.id !== 'search-layer')
+            return;
+        // Get the end position
+        let eRow = gOutlinerEnd.row;
+        let eCol = gOutlinerEnd.col;
         // Get the word under the outliner
         let word = getMarkedWord(eRow, eCol);
-        // Word in not found part of the list
-        if (wordNotFound(word)) {
+        // Is the word in NOT FOUND part of the list
+        if (isWordNotFound(word)) {
             // Copy the outline element to found words layer
             const wordFoundLayer = document.getElementById('found-layer');
             const outlinerClone = outliner.cloneNode();
@@ -456,7 +477,7 @@ function mouseUpListener(e) {
             // If game colorful mode is set
             if (gGameSettings.colorfulMode) {
                 // Select a distinct color
-                outlinerClone.classList.add('color' + (gFoundWords++ % 10));
+                outlinerClone.classList.add('color' + (countWordsFound() % 10));
             }
             outlinerClone.classList.remove('hidden');
             outlinerClone.id = 'outliner-found-' + word;
@@ -482,14 +503,16 @@ function mouseUpListener(e) {
  * @returns {string} The word found.
  */
 function getMarkedWord(eRow, eCol) {
-    let sRow = gOutlinerStartPosition.row;
-    let sCol = gOutlinerStartPosition.col;
+    let sRow = gOutlinerStart.row;
+    let sCol = gOutlinerStart.col;
+    let iRow = Math.sign(eRow - sRow);
+    let iCol = Math.sign(eCol - sCol);
     let word = '';
     do {
         word += gGrid[sRow][sCol];
         if (sCol === eCol && sRow === eRow) break;
-        sRow += Math.sign(eRow - sRow);
-        sCol += Math.sign(eCol - sCol);
+        sRow += iRow;
+        sCol += iCol;
     } while (true);
     return word;
 }
@@ -513,17 +536,25 @@ function markWordAsFound(word) {
  * @param {string} word The word to find in list.
  * @returns {boolean} True if the word is still in not found part of the list.
  */
-function wordNotFound(word) {
+function isWordNotFound(word) {
     const list = [...document.querySelectorAll('#list-container li:not(.found)')];
     return list.find(element => element.dataset.clean === word) !== undefined;
 }
 
 /**
- * Gets the count of words in the NOT FOUND portion of the search word list.
+ * Gets the count of words FOUND.
+ * @returns {number} The word count.
+ */
+function countWordsFound() {
+    return gWords.filter(x => x.found).length;
+}
+
+/**
+ * Gets the count of words NOT FOUND.
  * @returns {number} The word count.
  */
 function countWordsNotFound() {
-    return [...document.querySelectorAll('#list-container li:not(.found)')].length;
+    return gWords.filter(x => x.placed && !x.found).length;
 }
 
 /**
@@ -541,7 +572,6 @@ function clickToRestart(e) {
  * Restores a game from local storage
  */
 function restoreGame() {
-    gSet = gGameState.set;
     gGrid = gGameState.grid;
     gWords = gGameState.words;
     displayGrid();
@@ -740,14 +770,26 @@ function showSettings() {
                 </div>
             </div>
 
+            <div class="setting">
+                <div class="Text">
+                    <div class="title">Force New Game</div>
+                    <div class="description">Discards current game and apply settings to a new one</div>
+                </div>
+                <div class="control">
+                    <div class="switch" id="force-new" name="force-new">
+                        <div class="knob">&nbsp;</div>
+                    </div>
+                </div>
+            </div>
+
         </div>`;
-    msgbox('Settings', html);
+    msgbox('Settings', html, ['Ok'], settingsButtonListener);
     // Check for game settings values and initialize checked attribute of switch controls
     if (gGameSettings.darkTheme) document.getElementById('dark-theme').setAttribute('checked', '');
     if (gGameSettings.hardMode) document.getElementById('hard-mode').setAttribute('checked', '');
     if (gGameSettings.colorfulMode) document.getElementById('colorful-mode').setAttribute('checked', '');
     // Check for actual image set value and initialize its option selected attribute
-    if (gGameSettings.set) document.querySelector(`option[value="${gGameSettings.set}"]`).setAttribute('selected', '');
+    if (gGameSettings.setName) document.querySelector(`option[value="${gGameSettings.setName}"]`).setAttribute('selected', '');
     // Event listener for changes in the settings controls
     document.getElementById('settings-container').addEventListener('click', (e) => {
         let target = e.target;
@@ -798,12 +840,37 @@ function showSettings() {
 
         // Set (select control)
         if (name == 'set') {
-            gGameSettings.set = target.value;
+            gGameSettings.setName = target.value;
+        }
+
+        // Forde New Game (check type control)
+        if (name == 'force-new') {
+            // Inverts checked state and update game setting
+            let checked = (target.getAttribute('checked') == null);
+            gForceNewGame = checked;
+            // Apply setting on game and update the input checked state
+            if (checked) {
+                target.setAttribute('checked', '');
+            } else {
+                target.removeAttribute('checked');
+            }
         }
 
         // Store configuration in local storage
         setGameSettings();
     });
+}
+
+function settingsButtonListener(e) {
+    msgboxClose();
+    if (e.target.innerText === 'OK') {
+        if (gForceNewGame) {
+            gGameState.status = '';
+            setGameState();
+            initGame();
+        }
+    }
+
 }
 
 // Nav bar initialization
