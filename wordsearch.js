@@ -41,49 +41,54 @@ if (gGameSettings) {
 /**
  * Integrates all the initializations and generation of the grid for a new game.
  */
-async function initGame() {
+function initGame() {
     // Check for a previous game IN PROGRESS to restore, or create a new one
     if (gGameState && gGameState.status === 'IN_PROGRESS') {
-        gSet = await getWordSet(gGameState.set.name);
         restoreGame();
     } else {
-        gSet = await getWordSet(gGameSettings.setName);
-        // Create and initialize the letters grid
-        initGrid();
-        // Prepare a list of word objects from the set and initialize its data
-        let gWords = await gSet.words.map((word, index) => {
-            return {
-                index: index, // original position of the word within the list
-                word: word, // the original word to put in the search list
-                clean: cleanWord(word), // a cleaned version of the word to put in the grid (only valid chars)
-                placed: false, // a flag to know if the word is already placed in the grid
-                found: false, // a flag to know if the word is already found by player
-            }
-        });
-        // Sort items by word length descending for efficiency
-        gWords.sort((a, b) => b.clean.length - a.clean.length);
-        // Force the words into the grid and update its placed state
-        gWords.forEach(item => item.placed = forceWord(item.clean));
-        // Complete the grid and display
-        fillGridSpaces();
-        displayGrid();
-        // Filter only placed words and sort by index to restore the original list order
-        gWords = gWords.filter(item => item.placed).sort((a, b) => a.index - b.index);
-        // Display in the search words list
-        displayWordList(gWords);
-        gGameState.status = 'IN_PROGRESS';
-        gGameState.found = '';
-        backupGame(gSet, gGrid, gWords);
-        prepareOutliner();
+        createGame();
     }
 }
 
-function createNewGame() {
-
+/**
+ * Create a net game
+ */
+async function createGame() {
+    gSet = await getWordSet(gGameSettings.setName);
+    displayName();
+    // Create a list of word objects from the set and initialize its properties
+    gWords = gSet.words.map((word, index) => {
+        return {
+            index: index, // original position of the word within the list
+            word: word, // the original word to put in the search list
+            clean: cleanWord(word), // a cleaned version of the word to put in the grid (only valid chars)
+            placed: false, // to know if the word is already placed in the grid
+            found: false, // to know if the word is already found by player
+        }
+    });
+    // Sort items by word length descending for efficiency
+    gWords = gWords.sort((a, b) => b.clean.length - a.clean.length);
+    // Create and initialize the letters grid
+    initGrid();
+    // Force the words into the grid and update its placed state
+    gWords.forEach(item => item.placed = forceWord(item.clean));
+    // Complete the grid and display
+    fillGridSpaces();
+    displayGrid();
+    // Filter only placed words and sort by index to restore the original list order
+    gWords = gWords.filter(item => item.placed).sort((a, b) => a.index - b.index);
+    // Display the search words list
+    displayList();
+    prepareOutlinerLayers();
+    gGameState.found = '';
+    gGameState.status = 'IN_PROGRESS';
+    backupGame();
 }
 
-function prepareOutliner() {
-    // Creates DOM elements for a search layer and the ouliner, and a found layer
+/**
+ * Creates DOM elements for a search layer and the ouliner, and a found layer
+ */
+function prepareOutlinerLayers() {
     const gridCont = document.getElementById('grid-container');
     const searchLayer = document.createElement('div');
     const foundLayer = document.createElement('div');
@@ -265,6 +270,14 @@ function putWordDiagonalDown(word, row, col) {
 }
 
 /**
+ * Display the set name over the grid
+ */
+function displayName() {
+    const titleCont = document.getElementById('title-container');
+    titleCont.innerHTML = `<h2>${gSet.title}</h2>`
+}
+
+/**
  * Generates DOM elements to display the virtual grid.
  */
 function displayGrid() {
@@ -287,12 +300,10 @@ function displayGrid() {
 /**
  * Generates DOM elements to display the list of words.
  */
-function displayWordList(list) {
-    const titleCont = document.getElementById('title-container');
-    titleCont.innerHTML = `<h2>${gSet.title}</h2>`
+function displayList() {
     const listCont = document.getElementById('list-container');
     listCont.innerHTML = '';
-    list.forEach(item => {
+    gWords.forEach(item => {
         let li = document.createElement('li');
         li.innerText = item.word;
         li.dataset.clean = item.clean;
@@ -484,6 +495,7 @@ function mouseUpListener(e) {
             wordFoundLayer.appendChild(outlinerClone);
             // Cross the found word in the list
             markWordAsFound(word);
+            displayList();
             // Verify GAME OVER condition
             if (countWordsNotFound() === 0) {
                 gGameState.status = 'GAME_OVER';
@@ -523,10 +535,11 @@ function getMarkedWord(eRow, eCol) {
  * @returns True if the word could be marked.
  */
 function markWordAsFound(word) {
-    const element = document.querySelector(`#list-container li[data-clean="${word}"]`);
-    if (element) {
-        element.classList.add('found');
-        return gWords.find(x => x.clean === word).found = true;
+    const thisWord = gWords.find(x => x.clean === word);
+    if (thisWord) {
+        if (!thisWord.found) {
+            return thisWord.found = true;
+        }
     }
     return false;
 }
@@ -537,8 +550,11 @@ function markWordAsFound(word) {
  * @returns {boolean} True if the word is still in not found part of the list.
  */
 function isWordNotFound(word) {
-    const list = [...document.querySelectorAll('#list-container li:not(.found)')];
-    return list.find(element => element.dataset.clean === word) !== undefined;
+    const thisWord = gWords.find(x => x.clean === word);
+    if (thisWord) {
+        return !thisWord.found;
+    }
+    return false;
 }
 
 /**
@@ -572,11 +588,13 @@ function clickToRestart(e) {
  * Restores a game from local storage
  */
 function restoreGame() {
+    gSet = gGameState.set;
     gGrid = gGameState.grid;
     gWords = gGameState.words;
+    displayName();
     displayGrid();
-    displayWordList(gWords);
-    prepareOutliner();
+    displayList(gWords);
+    prepareOutlinerLayers();
     const foundLayer = document.getElementById('found-layer');
     if (foundLayer) foundLayer.innerHTML = gGameState.found;
 }
@@ -584,12 +602,12 @@ function restoreGame() {
 /**
  * Back up the actual game to local storage
  */
-function backupGame(set, grid, words) {
+function backupGame() {
     const foundLayer = document.getElementById('found-layer');
     if (foundLayer) gGameState.found = foundLayer.innerHTML;
-    gGameState.set = set;
-    gGameState.grid = grid;
-    gGameState.words = words;
+    gGameState.set = gSet;
+    gGameState.grid = gGrid;
+    gGameState.words = gWords;
     setGameState();
 }
 

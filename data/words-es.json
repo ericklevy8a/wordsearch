@@ -111,9 +111,10 @@
             "estados unidos",
             "méxico",
             "guatemala",
-            "nicaragua",
-            "costa rica",
             "honduras",
+            "nicaragua",
+            "el salvador",
+            "costa rica",
             "panamá",
             "colombia",
             "venezuela",
@@ -125,34 +126,33 @@
             "guayana francesa",
             "surinam",
             "puerto rico",
-            "trinidad y tobago",
-            "el salvador"
+            "paraguay"
         ]
     },
     {
         "name": "casa",
         "title": "Partes de la Casa",
         "words": [
+            "acceso",
+            "alberca",
+            "ático",
+            "balcón",
+            "baño",
+            "biblioteca",
+            "cobertizo",
             "cochera",
-            "entrada",
-            "recibidor",
             "cocina",
-            "desayunador",
-            "refrigerador",
-            "horno microondas",
-            "estufa",
-            "sala de estar",
-            "alfombra",
-            "florero",
             "comedor",
-            "trinchador",
-            "recámara",
-            "habitación",
-            "pasillo",
-            "regadera",
+            "desayunador",
             "escaleras",
+            "jardín",
+            "pasillo",
+            "recámara",
+            "recibidor",
+            "sala de estar",
+            "sótano",
             "terraza",
-            "jardín"
+            "vestidor"
         ]
     }
 ]
