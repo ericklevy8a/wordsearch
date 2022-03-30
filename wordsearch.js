@@ -5,6 +5,8 @@
  * or Sopa de Letras from the spaniard Pedro Ocón de Oro,
  */
 
+const PATH_TO_SETS_FILE = './data/words-es.json';
+
 const GRID_ROWS = 16;
 const GRID_COLS = 16;
 
@@ -16,6 +18,11 @@ const DIR_VERTICAL = 'v';
 const DIR_DIAGONAL_UP = 'u';
 const DIR_DIAGONAL_DOWN = 'd';
 
+const GAME_STATUS = {
+    IN_PROGRESS: Symbol('IN_PROGRESS'),
+    GAME_OVER: Symbol('GAME_OVER'),
+}
+
 // GLOBAL GAME VARIABLES
 
 var gSets = []; // the sets of words parsed from words-xx.json file
@@ -25,10 +32,14 @@ var gGrid = []; // virtual game grid
 
 var gForceNewGame = false;
 
+// Global vars for word placement algorithm statistics
+var gWPAStats = {};
+var gOverlaps = 0;
+
 // Try to get the game state, statistical and settings structures from local storage
-let gGameState = getGameState() || false;
-let gGameSettings = getGameSettings() || false;
-let gGameStatistics = getGameStatistics() || false;
+var gGameState = getGameState() || false;
+var gGameSettings = getGameSettings() || false;
+var gGameStatistics = getGameStatistics() || false;
 
 // If present, apply some game settings
 if (gGameSettings) {
@@ -43,7 +54,7 @@ if (gGameSettings) {
  */
 function initGame() {
     // Check for a previous game IN PROGRESS to restore, or create a new one
-    if (gGameState && gGameState.status === 'IN_PROGRESS') {
+    if (gGameState && gGameState.status === GAME_STATUS.IN_PROGRESS) {
         restoreGame();
     } else {
         createGame();
@@ -70,8 +81,18 @@ async function createGame() {
     gWords = gWords.sort((a, b) => b.clean.length - a.clean.length);
     // Create and initialize the letters grid
     initGrid();
-    // Force the words into the grid and update its placed state
-    gWords.forEach(item => item.placed = forceWord(item.clean));
+
+    // START OF THE WORD PLACEMENT ALGORITHM (WPA)
+    initWPAStats();
+    // Repeat while evaluation don't pass
+    while (true) {
+        initWPApass();
+        // Force the words into the grid and update its placed state
+        gWords.forEach(item => item.placed = forceWordPro(item.clean));
+        if (evalWPAStats()) break;
+    }
+    // END OF THE WORD PLACEMENT ALGORITHM (WPA)
+
     // Complete the grid and display
     fillGridSpaces();
     displayGrid();
@@ -81,12 +102,54 @@ async function createGame() {
     displayList();
     prepareOutlinerLayers();
     gGameState.found = '';
-    gGameState.status = 'IN_PROGRESS';
+    gGameState.status = GAME_STATUS.IN_PROGRESS;
     backupGame();
 }
 
+// Initialize WPA statistics
+function initWPAStats() {
+    gWPAStats.passes = 0;
+    gWPAStats.placedMax = 0;
+    gWPAStats.placedMaxPasses = 0;
+}
+function initWPApass() {
+    gWPAStats.passes += 1;
+    gWPAStats.placed = 0; // words placed in the grid
+    gWPAStats.cover = 0; // grid letters coverage
+    gWPAStats.overlaps = 0; // word letter overlaps counter
+    gWPAStats.dir = {
+        [DIR_HORIZONTAL]: 0,
+        [DIR_VERTICAL]: 0,
+        [DIR_DIAGONAL_UP]: 0,
+        [DIR_DIAGONAL_DOWN]: 0,
+    }
+}
+// Evaluate WPA statistics to ensure a level o quality of the resulting grid
+function evalWPAStats() {
+    const THRESHOLD_PASSES = GRID_ROWS + GRID_COLS;
+    const THRESHOLD_PLACED_MAX_PASSES = 3;
+    const THRESHOLD_PLACED_RATIO = 18 / 20;
+    // A control of maximum placed words to detect a practical limit
+    if (gWPAStats.placed > gWPAStats.placedMax) {
+        gWPAStats.placedMax = gWPAStats.placed;
+        gWPAStats.placedMaxPasses = 0;
+    } else if (gWPAStats.placed === gWPAStats.placedMax) {
+        gWPAStats.placedMaxPasses += 1;
+    }
+    // If is difficult to surpass the maximun number of placed words then hold the last
+    if (gWPAStats.placedMaxPasses > THRESHOLD_PLACED_MAX_PASSES && gWPAStats.passes > THRESHOLD_PASSES) return true;
+
+    // Test the percentage of words placed vs words in list
+    if (gWPAStats.placed / gWords.length < THRESHOLD_PLACED_RATIO) return false;
+    // Test coverage
+    // Test overlaps
+    // Test directions
+    // Passed all the test
+    return true;
+}
+
 /**
- * Creates DOM elements for a search layer and the ouliner, and a found layer
+ * Create DOM elements for a search layer, a found layer, and the ouliner.
  */
 function prepareOutlinerLayers() {
     const gridCont = document.getElementById('grid-container');
@@ -113,12 +176,18 @@ function prepareOutlinerLayers() {
  * @returns {object} A word set object.
  */
 async function getWordSet(name = 'random') {
-    gSets = await fetch('./data/words-es.json').then(response => { return response.json(); });
-    // If there are no set with the given name, then pick a random set
-    if (gSets.some(x => x.name === name)) {
-        return gSets.find(x => x.name === name);
-    } else {
-        return gSets[Math.floor(Math.random() * gSets.length)];
+    try {
+        const url = PATH_TO_SETS_FILE;
+        const response = await fetch(url);
+        gSets = await response.json();
+        // If there are no set with the given name, then pick a random set
+        if (gSets.some(x => x.name === name)) {
+            return gSets.find(x => x.name === name);
+        } else {
+            return pickRandom(gSets);
+        }
+    } catch (err) {
+        console.error(err);
     }
 }
 
@@ -149,62 +218,100 @@ function fillGridSpaces() {
 /**
  * Force to put a word in the virtual grid for a limited number of times.
  * @param {string} word Word to put into the grid.
- * @param {number} times Number of times the algorithm will try to force the word into the grid.
+ * @param {number} attempts Number of attempts the algorithm will try to force the word into the grid. Defaults to the number or positions on the grid.
  * @returns {boolean} True if the word could be placed, false otherwise.
  */
-function forceWord(word, times = GRID_ROWS * GRID_COLS) {
-    while (times > 0) {
+function forceWord(word, attempts = GRID_ROWS * GRID_COLS) {
+    while (attempts > 0) {
         if (tryWord(word))
             return true;
-        times -= 1;
+        attempts -= 1;
     }
     return false;
 }
 
 /**
- * Try to put a word in the virtual grid.
+ * Force to put a word in the virtual grid for a limited number of times (Pro version).
+ * @param {string} word Word to put into the grid.
+ * @param {number} attempts Number of attempts the algorithm will try to force the word into the grid. Defaults to the number or positions on the grid.
+ * @returns {boolean} True if the word could be placed, false otherwise.
+ */
+function forceWordPro(word) {
+    const DIRS = [DIR_DIAGONAL_UP, DIR_DIAGONAL_DOWN, DIR_VERTICAL, DIR_HORIZONTAL];
+    let rRow = Math.floor(Math.random() * GRID_ROWS);
+    let rCol = Math.floor(Math.random() * GRID_COLS);
+    //let rDir = Math.floor(Math.random() * DIRS.length);
+    let rSen = Math.round(Math.random());
+    for (let r = 0; r < GRID_ROWS; r++) {
+        const row = (rRow + r) % GRID_ROWS;
+        for (let c = 0; c < GRID_COLS; c++) {
+            const col = (rCol + c) % GRID_COLS;
+            for (let d = 0; d < DIRS.length; d++) {
+                const dir = d; //(rDir + d) % DIRS.length;
+                for (let s = 0; s < 2; s++) {
+                    const sen = (rSen + s) === 0;
+                    if (putWord(word, row, col, DIRS[dir], sen)) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * Generate a random position and direction and try to put a word in the virtual grid with them.
  * @param {string} word Word to put into the grid.
  * @returns {boolean} True if the word could be placed into the grid, false otherwise.
  */
 function tryWord(word) {
-    let dir = pickRandomChar(DIR_HORIZONTAL + DIR_VERTICAL + DIR_DIAGONAL_UP + DIR_DIAGONAL_DOWN);
-    let reverse = Math.random() > 0.5; // reverse proportion 50%
+    const DIRS = [DIR_HORIZONTAL, DIR_VERTICAL, DIR_DIAGONAL_UP, DIR_DIAGONAL_DOWN];
+    const dir = pickRandom(DIRS);
+    const reverse = Math.random() > 0.5; // reverse proportion 50%
     // Delimits the start position according to grid dimensions, direction and word length
-    let minCol = 0;
-    let maxCol = (dir === DIR_VERTICAL) ? GRID_COLS : GRID_COLS - (word.length - 1);
-    let minRow = (dir === DIR_DIAGONAL_UP) ? word.length - 1 : 0;
-    let maxRow = (dir === DIR_HORIZONTAL) ? GRID_ROWS : GRID_ROWS - (word.length - 1);
+    const minCol = 0;
+    const maxCol = (dir === DIR_VERTICAL) ? GRID_COLS : GRID_COLS - (word.length - 1);
+    const minRow = (dir === DIR_DIAGONAL_UP) ? word.length - 1 : 0;
+    const maxRow = (dir === DIR_HORIZONTAL) ? GRID_ROWS : GRID_ROWS - (word.length - 1);
     // Generate a valid start position
-    let row = Math.floor(minRow + Math.random() * (maxRow - minRow + 1));
-    let col = Math.floor(minCol + Math.random() * (maxCol - minCol + 1));
-    // Try to put in this position
+    const row = Math.floor(minRow + Math.random() * (maxRow - minRow + 1));
+    const col = Math.floor(minCol + Math.random() * (maxCol - minCol + 1));
+    // Try to put word in this position and return result
     return putWord(word, row, col, dir, reverse);
 }
 
 /**
- * Put a word in the virtual grid from a start position and a direction.
+ * Put a word in the virtual grid from a start position, a direction, and if in reverse mode.
  * @param {string} word Word to put into the grid.
  * @param {number} row Start position row.
  * @param {number} col Start position column.
- * @param {'h'|'v'|'u'|'d'} dir - h: horizontal, v: vertical, u: diagonal up, d: diagonal down
- * @param {boolean} reverse Put chars in reverse mode. Default to false.
+ * @param {DIR_HORIZONTAL|DIR_VERTICAL|DIR_DIAGONAL_UP|DIR_DIAGONAL_DOWN} dir Direction.
+ * @param {boolean} reverse Put chars in reverse mode. Defaults to false.
  * @returns {boolean} True if the word could be placed into the grid, false otherwise.
  */
 function putWord(word, row, col, dir, reverse = false) {
-    let retval = false;
+    let placed = false;
+    gOverlaps = 0;
     // Check reverse mode
     if (reverse) word = reverseString(word);
     // Use the direction corresponding routine
     switch (dir) {
-        case DIR_HORIZONTAL: retval = putWordHorizontal(word, row, col); break;
-        case DIR_VERTICAL: retval = putWordVertical(word, row, col); break;
-        case DIR_DIAGONAL_UP: retval = putWordDiagonalUp(word, row, col); break;
-        case DIR_DIAGONAL_DOWN: retval = putWordDiagonalDown(word, row, col); break;
+        case DIR_HORIZONTAL: placed = putWordHorizontal(word, row, col); break;
+        case DIR_VERTICAL: placed = putWordVertical(word, row, col); break;
+        case DIR_DIAGONAL_UP: placed = putWordDiagonalUp(word, row, col); break;
+        case DIR_DIAGONAL_DOWN: placed = putWordDiagonalDown(word, row, col); break;
+    }
+    // Update put words algorithm statistics
+    if (placed) {
+        gWPAStats.placed += 1;
+        gWPAStats.cover += (word.length - gOverlaps);
+        gWPAStats.overlaps += gOverlaps;
+        gWPAStats.dir[dir] += 1;
     }
     // Return the word could be placed flag
-    return retval;
+    return placed;
 }
-
 /** Put a word in horizontal direction */
 function putWordHorizontal(word, row, col) {
     // Do some validations
@@ -212,6 +319,7 @@ function putWordHorizontal(word, row, col) {
     if (word.length === 0 || col + word.length > GRID_COLS) return false;
     // Word position validation
     for (let i = 0; i < word.length; i++) {
+        if (gGrid[row][col + i] === word[i]) gOverlaps += 1;
         if (gGrid[row][col + i] !== INIT_CHAR && gGrid[row][col + i] !== word[i]) {
             return false;
         }
@@ -220,7 +328,6 @@ function putWordHorizontal(word, row, col) {
     for (let i = 0; i < word.length; i++) { gGrid[row][col + i] = word[i] }
     return true;
 }
-
 /** Put a word in vertical direction */
 function putWordVertical(word, row, col) {
     // Do some validations
@@ -228,6 +335,7 @@ function putWordVertical(word, row, col) {
     if (word.length === 0 || row + word.length > GRID_ROWS) return false;
     // Word position validation
     for (let i = 0; i < word.length; i++) {
+        if (gGrid[row + i][col] === word[i]) gOverlaps += 1;
         if (gGrid[row + i][col] !== INIT_CHAR && gGrid[row + i][col] !== word[i]) {
             return false;
         }
@@ -236,7 +344,6 @@ function putWordVertical(word, row, col) {
     for (let i = 0; i < word.length; i++) { gGrid[row + i][col] = word[i] }
     return true;
 }
-
 /** Put a word in diagonal up direction */
 function putWordDiagonalUp(word, row, col) {
     // Do some validations
@@ -244,6 +351,7 @@ function putWordDiagonalUp(word, row, col) {
     if (word.length === 0 || col + word.length > GRID_COLS || row - (word.length - 1) < 0) return false;
     // Word position validation
     for (let i = 0; i < word.length; i++) {
+        if (gGrid[row - i][col + i] === word[i]) gOverlaps += 1;
         if (gGrid[row - i][col + i] !== INIT_CHAR && gGrid[row - i][col + i] !== word[i]) {
             return false;
         }
@@ -252,7 +360,6 @@ function putWordDiagonalUp(word, row, col) {
     for (let i = 0; i < word.length; i++) { gGrid[row - i][col + i] = word[i] }
     return true;
 }
-
 /** Put a word in diagonal down direction */
 function putWordDiagonalDown(word, row, col) {
     // Do some validations
@@ -260,6 +367,7 @@ function putWordDiagonalDown(word, row, col) {
     if (word.length === 0 || col + word.length > GRID_COLS || row + word.length > GRID_ROWS) return false;
     // Word position validation
     for (let i = 0; i < word.length; i++) {
+        if (gGrid[row + i][col + i] === word[i]) gOverlaps += 1;
         if (gGrid[row + i][col + i] !== INIT_CHAR && gGrid[row + i][col + i] !== word[i]) {
             return false;
         }
@@ -270,7 +378,7 @@ function putWordDiagonalDown(word, row, col) {
 }
 
 /**
- * Display the set name over the grid
+ * Display the word set title over the grid
  */
 function displayName() {
     const titleCont = document.getElementById('title-container');
@@ -278,7 +386,7 @@ function displayName() {
 }
 
 /**
- * Generates DOM elements to display the virtual grid.
+ * Generates DOM elements and display the virtual grid.
  */
 function displayGrid() {
     const gridCont = document.getElementById('grid-container');
@@ -298,7 +406,7 @@ function displayGrid() {
 }
 
 /**
- * Generates DOM elements to display the list of words.
+ * Generates DOM elements and display the list of words.
  */
 function displayList() {
     const listCont = document.getElementById('list-container');
@@ -315,8 +423,8 @@ function displayList() {
 /* SOME TOOLS */
 
 /**
- * Clean a word string replacing some ilegal chars for the game.
- * @param {string} word A word to apply the cleaning procedure.
+ * Clean a word string replacing and deleting some ilegal chars for the game.
+ * @param {string} word A word to clean.
  * @returns The cleaned word.
  */
 function cleanWord(word) {
@@ -331,9 +439,18 @@ function cleanWord(word) {
 }
 
 /**
- * Pick a ramdom char from a valid chars string
- * @param {string} chars - valid chars string
- * @returns {string} a randomly picked char from chars
+ * Pick a ramdom element from an array.
+ * @param {array} array Array of elements.
+ * @returns {string} A randomly picked element from array.
+ */
+function pickRandom(array) {
+    return array[Math.floor(array.length * Math.random())];
+}
+
+/**
+ * Pick a ramdom char from a valid chars string.
+ * @param {string} chars Valid chars string.
+ * @returns {string} A randomly picked char from chars.
  */
 function pickRandomChar(chars) {
     return chars[Math.floor(chars.length * Math.random())];
@@ -498,7 +615,7 @@ function mouseUpListener(e) {
             displayList();
             // Verify GAME OVER condition
             if (countWordsNotFound() === 0) {
-                gGameState.status = 'GAME_OVER';
+                gGameState.status = GAME_STATUS.GAME_OVER;
                 let msg = 'You have found all the words!<br>';
                 msg += 'Press RESTART button or refresh page to play again.';
                 msgbox('Congratulations!', msg, 'Restart', clickToRestart);
