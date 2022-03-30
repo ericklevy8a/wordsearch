@@ -5,7 +5,7 @@
  * or Sopa de Letras from the spaniard Pedro Ocón de Oro,
  */
 
-const PATH_TO_SETS_FILE = './data/words-es.json';
+const PATH_TO_SETS_FILE = './data/words-en.json';
 
 const GRID_ROWS = 16;
 const GRID_COLS = 16;
