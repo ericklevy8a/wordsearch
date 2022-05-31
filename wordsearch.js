@@ -5,6 +5,8 @@
  * or Sopa de Letras from the spaniard Pedro Ocón de Oro,
  */
 
+// CONSTANT DECLARATION
+
 const PATH_TO_SETS_FILE = './data/words-en.json';
 
 const GRID_ROWS = 16;
@@ -50,10 +52,9 @@ if (gGameSettings) {
 // INITIALIZING GAME AND GENERATING GRID ROUTINES
 
 /**
- * Integrates all the initializations and generation of the grid for a new game.
+ * Initialize game checking first for a previous game IN PROGRESS to restore, or create a new one
  */
 function initGame() {
-    // Check for a previous game IN PROGRESS to restore, or create a new one
     if (gGameState && gGameState.status === GAME_STATUS.IN_PROGRESS) {
         restoreGame();
     } else {
@@ -62,7 +63,7 @@ function initGame() {
 }
 
 /**
- * Create a net game
+ * Create a new game using a word placement algorithm (WPA)
  */
 async function createGame() {
     gSet = await getWordSet(gGameSettings.setName);
@@ -124,7 +125,8 @@ function initWPApass() {
         [DIR_DIAGONAL_DOWN]: 0,
     }
 }
-// Evaluate WPA statistics to ensure a level o quality of the resulting grid
+// <<< WORK IN PROGRESS >>>
+// Evaluate WPA statistics to ensure a level o quality of the resulting grid.
 function evalWPAStats() {
     const THRESHOLD_PASSES = GRID_ROWS + GRID_COLS;
     const THRESHOLD_PLACED_MAX_PASSES = 3;
@@ -141,9 +143,10 @@ function evalWPAStats() {
 
     // Test the percentage of words placed vs words in list
     if (gWPAStats.placed / gWords.length < THRESHOLD_PLACED_RATIO) return false;
-    // Test coverage
-    // Test overlaps
-    // Test directions
+    // @TODO: Test coverage
+    // @TODO: Test overlaps
+    // @TODO: Test directions
+
     // Passed all the test
     return true;
 }
@@ -237,6 +240,7 @@ function forceWord(word, attempts = GRID_ROWS * GRID_COLS) {
  * @returns {boolean} True if the word could be placed, false otherwise.
  */
 function forceWordPro(word) {
+    // The order of the directions in next array is important in this part of the algorithm
     const DIRS = [DIR_DIAGONAL_UP, DIR_DIAGONAL_DOWN, DIR_VERTICAL, DIR_HORIZONTAL];
     let rRow = Math.floor(Math.random() * GRID_ROWS);
     let rCol = Math.floor(Math.random() * GRID_COLS);
